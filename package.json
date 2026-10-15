@@ -47,6 +47,7 @@
       "open-panel": { "methods": ["open-panel"] },
       "mcp-status": { "methods": ["mcp-status"] },
       "mcp-set-enabled": { "methods": ["mcp-set-enabled"] },
+      "mcp-set-port": { "methods": ["mcp-set-port"] },
       "mcp-restart": { "methods": ["mcp-restart"] }
     },
     "scene": {

@@ -50,6 +50,12 @@ exports.template = `
       Point your AI assistant at the endpoint below. The server listens on
       <strong>127.0.0.1 only</strong> and is reachable while Creator is open.
     </p>
+    <div class="mcp-port">
+      <label class="mcp-label" for="port">Port</label>
+      <input class="mcp-input" id="port" type="number" min="1024" max="65535" inputmode="numeric" />
+      <button class="mcp-btn" id="save-port">Save &amp; restart</button>
+    </div>
+    <p class="mcp-note" id="port-note">Default 3945. Changing the port restarts the server.</p>
     <div class="mcp-actions">
       <button class="mcp-btn mcp-btn-primary" id="copy">Copy client config</button>
       <span class="mcp-note" id="copied"></span>
@@ -80,6 +86,10 @@ exports.style = `
 .mcp-note { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: #9aa3b2; }
 .mcp-note.err { color: #f87171; }
 .mcp-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.mcp-port { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.mcp-input { width: 96px; background: #12141a; border: 1px solid #333a49; color: #e6e8ef;
+  border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.mcp-input:focus { outline: none; border-color: #2f6bff; }
 .mcp-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .mcp-btn { border: 1px solid #333a49; background: #232733; color: #e6e8ef; border-radius: 8px;
   padding: 7px 12px; font-size: 12px; cursor: pointer; }
@@ -100,6 +110,7 @@ function ready() {
     });
     $('restart')?.addEventListener('click', () => void restart());
     $('copy')?.addEventListener('click', () => void copyConfig());
+    $('save-port')?.addEventListener('click', () => void savePort());
 }
 function beforeClose() {
     // The server lives in the main process and must outlive the panel; nothing to do.
@@ -113,6 +124,28 @@ const setEnabled = async (enabled) => {
 const restart = async () => {
     await message.request(EXTENSION, 'mcp-restart');
     await refresh();
+};
+const note = (id, text, isError = false) => {
+    const element = $(id);
+    if (!element)
+        return;
+    element.textContent = text;
+    element.classList.toggle('err', isError);
+    if (!isError && text)
+        window.setTimeout(() => (element.textContent = ''), 1800);
+};
+const savePort = async () => {
+    const input = $('port');
+    if (!input)
+        return;
+    try {
+        await message.request(EXTENSION, 'mcp-set-port', Number.parseInt(input.value, 10));
+        note('port-note', 'Saved — server restarted.');
+        await refresh();
+    }
+    catch (err) {
+        note('port-note', err instanceof Error ? err.message : String(err), true);
+    }
 };
 const copyConfig = async () => {
     const status = await current();
@@ -160,6 +193,10 @@ const refresh = async () => {
     const enabled = $('enabled');
     if (enabled)
         enabled.checked = status.enabled;
+    const port = $('port');
+    // Don't clobber a value the user is currently typing.
+    if (port && document.activeElement !== port)
+        port.value = String(status.configuredPort);
     const editor = $('editor');
     if (editor)
         editor.textContent = `Cocos Creator ${status.editorVersion}`;

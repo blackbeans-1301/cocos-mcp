@@ -13,6 +13,7 @@ const bridge_js_1 = require("./bridge.js");
 const session_js_1 = require("./mcp/session.js");
 const index_js_1 = require("./tools/index.js");
 const PROFILE_KEY = 'mcpEnabled';
+const PROFILE_PORT_KEY = 'mcpPort';
 const editor = () => globalThis.Editor;
 const version = () => {
     try {
@@ -26,34 +27,37 @@ const version = () => {
     }
 };
 const ctx = { bridge: (0, bridge_js_1.createBridge)() };
-/**
- * Port override for cases where even `3945` clashes: `ADSCRAFT_MCP_PORT=4000`.
- * Invalid values are ignored so a typo never stops the server from starting.
- */
-const portOverride = () => {
-    const raw = process.env['ADSCRAFT_MCP_PORT'];
-    if (!raw)
-        return undefined;
-    const value = Number.parseInt(raw, 10);
-    return Number.isInteger(value) && value > 0 && value < 65536 ? value : undefined;
+const PORT_MIN = 1024;
+const PORT_MAX = 65535;
+/** Accept only an integer in the unprivileged range (below 1024 needs root on Unix). */
+const validPort = (value) => {
+    const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+    return Number.isInteger(parsed) && parsed >= PORT_MIN && parsed <= PORT_MAX ? parsed : undefined;
 };
+/** `ADSCRAFT_MCP_PORT=4000` — for cases where even the default clashes. Invalid values are ignored. */
+const envPort = () => validPort(process.env['ADSCRAFT_MCP_PORT']);
+/** Port the user chose in the panel (remembered per project). */
+const profilePort = async () => validPort(await editor().Profile.getProject(bridge_js_1.EXTENSION_NAME, PROFILE_PORT_KEY));
+/** Precedence: panel setting → environment variable → default. */
+const desiredPort = async () => (await profilePort()) ?? envPort() ?? session_js_1.DEFAULT_MCP_PORT;
 const isEnabled = async () => (await editor().Profile.getProject(bridge_js_1.EXTENSION_NAME, PROFILE_KEY)) !== false;
-const status = async () => ({
-    ...(0, session_js_1.mcpStatus)(),
-    enabled: await isEnabled(),
-    toolCount: index_js_1.TOOLS.length,
-    editorVersion: ctx.bridge.editorVersion(),
-    port: (0, session_js_1.mcpStatus)().port || session_js_1.DEFAULT_MCP_PORT,
-});
+const status = async () => {
+    const desired = await desiredPort();
+    const session = (0, session_js_1.mcpStatus)();
+    return {
+        ...session,
+        // `port` is the port actually bound (or the desired one when stopped);
+        // `configuredPort` is what the panel shows in the input.
+        port: session.port || desired,
+        configuredPort: desired,
+        enabled: await isEnabled(),
+        toolCount: index_js_1.TOOLS.length,
+        editorVersion: ctx.bridge.editorVersion(),
+    };
+};
 const start = async () => {
     try {
-        const options = {
-            serverInfo: { name: bridge_js_1.EXTENSION_NAME, version: version() },
-        };
-        const port = portOverride();
-        if (port !== undefined)
-            options.port = port;
-        await (0, session_js_1.startMcp)(ctx, options);
+        await (0, session_js_1.startMcp)(ctx, { port: await desiredPort(), serverInfo: { name: bridge_js_1.EXTENSION_NAME, version: version() } });
         console.log(`[adscraft-mcp] listening on ${(0, session_js_1.mcpStatus)().url}`);
     }
     catch (err) {
@@ -73,6 +77,17 @@ exports.methods = {
             await start();
         else
             await (0, session_js_1.stopMcp)();
+        return status();
+    },
+    /** Save a new port and restart the server on it. Rejects on an invalid port. */
+    'mcp-set-port': async (port) => {
+        const value = validPort(port);
+        if (value === undefined) {
+            throw new Error(`Port must be an integer between ${PORT_MIN} and ${PORT_MAX}.`);
+        }
+        await editor().Profile.setProject(bridge_js_1.EXTENSION_NAME, PROFILE_PORT_KEY, value);
+        await (0, session_js_1.stopMcp)();
+        await start();
         return status();
     },
     'mcp-restart': async () => {

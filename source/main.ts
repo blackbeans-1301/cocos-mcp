@@ -11,6 +11,7 @@ import { DEFAULT_MCP_PORT, mcpStatus, startMcp, stopMcp } from './mcp/session.js
 import { TOOLS, type ToolContext } from './tools/index.js'
 
 const PROFILE_KEY = 'mcpEnabled'
+const PROFILE_PORT_KEY = 'mcpPort'
 
 interface ProfileApi {
   getProject(pkg: string, key: string): Promise<unknown>
@@ -37,36 +38,46 @@ const version = (): string => {
 
 const ctx: ToolContext = { bridge: createBridge() }
 
-/**
- * Port override for cases where even `3945` clashes: `ADSCRAFT_MCP_PORT=4000`.
- * Invalid values are ignored so a typo never stops the server from starting.
- */
-const portOverride = (): number | undefined => {
-  const raw = process.env['ADSCRAFT_MCP_PORT']
-  if (!raw) return undefined
-  const value = Number.parseInt(raw, 10)
-  return Number.isInteger(value) && value > 0 && value < 65536 ? value : undefined
+const PORT_MIN = 1024
+const PORT_MAX = 65535
+
+/** Accept only an integer in the unprivileged range (below 1024 needs root on Unix). */
+const validPort = (value: unknown): number | undefined => {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
+  return Number.isInteger(parsed) && parsed >= PORT_MIN && parsed <= PORT_MAX ? parsed : undefined
 }
+
+/** `ADSCRAFT_MCP_PORT=4000` — for cases where even the default clashes. Invalid values are ignored. */
+const envPort = (): number | undefined => validPort(process.env['ADSCRAFT_MCP_PORT'])
+
+/** Port the user chose in the panel (remembered per project). */
+const profilePort = async (): Promise<number | undefined> =>
+  validPort(await editor().Profile.getProject(EXTENSION_NAME, PROFILE_PORT_KEY))
+
+/** Precedence: panel setting → environment variable → default. */
+const desiredPort = async (): Promise<number> => (await profilePort()) ?? envPort() ?? DEFAULT_MCP_PORT
 
 const isEnabled = async (): Promise<boolean> =>
   (await editor().Profile.getProject(EXTENSION_NAME, PROFILE_KEY)) !== false
 
-const status = async (): Promise<Record<string, unknown>> => ({
-  ...mcpStatus(),
-  enabled: await isEnabled(),
-  toolCount: TOOLS.length,
-  editorVersion: ctx.bridge.editorVersion(),
-  port: mcpStatus().port || DEFAULT_MCP_PORT,
-})
+const status = async (): Promise<Record<string, unknown>> => {
+  const desired = await desiredPort()
+  const session = mcpStatus()
+  return {
+    ...session,
+    // `port` is the port actually bound (or the desired one when stopped);
+    // `configuredPort` is what the panel shows in the input.
+    port: session.port || desired,
+    configuredPort: desired,
+    enabled: await isEnabled(),
+    toolCount: TOOLS.length,
+    editorVersion: ctx.bridge.editorVersion(),
+  }
+}
 
 const start = async (): Promise<void> => {
   try {
-    const options: { port?: number; serverInfo: { name: string; version: string } } = {
-      serverInfo: { name: EXTENSION_NAME, version: version() },
-    }
-    const port = portOverride()
-    if (port !== undefined) options.port = port
-    await startMcp(ctx, options)
+    await startMcp(ctx, { port: await desiredPort(), serverInfo: { name: EXTENSION_NAME, version: version() } })
     console.log(`[adscraft-mcp] listening on ${mcpStatus().url}`)
   } catch (err) {
     // Never let a failure here kill the extension — the panel still has to open
@@ -86,6 +97,18 @@ export const methods = {
     await editor().Profile.setProject(EXTENSION_NAME, PROFILE_KEY, enabled === true)
     if (enabled === true) await start()
     else await stopMcp()
+    return status()
+  },
+
+  /** Save a new port and restart the server on it. Rejects on an invalid port. */
+  'mcp-set-port': async (port: number) => {
+    const value = validPort(port)
+    if (value === undefined) {
+      throw new Error(`Port must be an integer between ${PORT_MIN} and ${PORT_MAX}.`)
+    }
+    await editor().Profile.setProject(EXTENSION_NAME, PROFILE_PORT_KEY, value)
+    await stopMcp()
+    await start()
     return status()
   },
 

@@ -72,8 +72,17 @@ Keep Creator open with the project you want to work on — the tools act on the
 *open* editor, not on files on disk.
 
 The default port is **3945** (deliberately uncommon — `3000` collides with most
-dev servers). If it still clashes, set `ADSCRAFT_MCP_PORT` in the environment you
-launch Creator from; the panel always shows the port actually in use.
+dev servers). Change it in the panel (**Extension → AdsCraft MCP → Port → Save &
+restart**); the choice is remembered per project. `ADSCRAFT_MCP_PORT` in the
+environment is the fallback when no port is set in the panel. The panel always
+shows the port actually in use.
+
+## Panel
+
+**Extension → AdsCraft MCP** (or `Cmd/Ctrl+Shift+M`) opens a small panel that
+shows whether the server is running, the endpoint, the tool count, and lets you
+turn the server on/off, change the port, copy a ready-to-paste client config, and
+restart the server.
 
 ## Tools
 
