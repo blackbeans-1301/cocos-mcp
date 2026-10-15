@@ -1,0 +1,61 @@
+{
+  "name": "ads-craft-mcp",
+  "version": "0.1.0",
+  "package_version": 2,
+  "description": "AdsCraft MCP — let AI assistants drive Cocos Creator 3.8.8 (scenes, nodes, components, prefabs, assets) over the Model Context Protocol.",
+  "author": "AdsCraft",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/main.js",
+  "editor": "^3.8.8",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.mjs",
+    "clean": "rimraf dist"
+  },
+  "panels": {
+    "main": {
+      "title": "AdsCraft MCP",
+      "main": "./dist/panel/index.js",
+      "type": "simple",
+      "size": {
+        "min-width": 560,
+        "min-height": 420,
+        "width": 640,
+        "height": 520
+      }
+    }
+  },
+  "contributions": {
+    "menu": [
+      {
+        "path": "Extension",
+        "label": "AdsCraft MCP",
+        "message": "open-panel"
+      }
+    ],
+    "shortcuts": [
+      {
+        "message": "open-panel",
+        "win": "ctrl+shift+m",
+        "mac": "cmd+shift+m"
+      }
+    ],
+    "messages": {
+      "open-panel": { "methods": ["open-panel"] },
+      "mcp-status": { "methods": ["mcp-status"] },
+      "mcp-set-enabled": { "methods": ["mcp-set-enabled"] },
+      "mcp-restart": { "methods": ["mcp-restart"] }
+    },
+    "scene": {
+      "script": "./dist/scene.js"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.0"
+  }
+}
