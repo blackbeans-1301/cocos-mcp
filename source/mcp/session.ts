@@ -7,8 +7,16 @@ import type { ToolContext } from '../tools/types.js'
 import { type McpHttpHandle, startMcpHttp } from './server.js'
 import type { ServerInfo } from './protocol.js'
 
-/** Default port. 3000 is the de-facto port for Cocos Creator MCP extensions. */
-export const DEFAULT_MCP_PORT = 3000
+/**
+ * Default port.
+ *
+ * `3000` (what most Cocos MCP extensions use) is the single worst choice in this
+ * range — Next.js, Vercel, CRA, Rails and Grafana all default to it. `3945` is
+ * obscure: no popular dev server claims it, and it is not an IANA-registered
+ * port (unlike 3306/3389/3478 in this block). Override with the
+ * `ADSCRAFT_MCP_PORT` environment variable when it still clashes.
+ */
+export const DEFAULT_MCP_PORT = 3945
 
 export interface McpSessionStatus {
   running: boolean

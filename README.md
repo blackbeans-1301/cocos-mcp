@@ -17,7 +17,7 @@ AI client  ──HTTP (127.0.0.1)──►  AdsCraft MCP (in the editor)  ──
 ```
 
 - **40 tools** across editor, scene, node, component, prefab and asset groups.
-- **Streamable HTTP** on `http://127.0.0.1:3000/mcp` — attaches to a running editor.
+- **Streamable HTTP** on `http://127.0.0.1:3945/mcp` — attaches to a running editor.
 - **Zero runtime dependencies** — the MCP protocol and the HTTP transport are a
   small hand-written subset, so nothing extra is bundled into the editor.
 - **Loopback only** — binds `127.0.0.1` and rejects non-loopback `Origin`/`Host`.
@@ -49,13 +49,13 @@ npm run build
 The endpoint is shown in the panel. Default:
 
 ```
-http://127.0.0.1:3000/mcp
+http://127.0.0.1:3945/mcp
 ```
 
 **Claude Code**
 
 ```bash
-claude mcp add --transport http adscraft http://127.0.0.1:3000/mcp
+claude mcp add --transport http adscraft http://127.0.0.1:3945/mcp
 ```
 
 **Cursor / any client with an `mcp.json`**
@@ -63,13 +63,17 @@ claude mcp add --transport http adscraft http://127.0.0.1:3000/mcp
 ```json
 {
   "mcpServers": {
-    "adscraft": { "type": "http", "url": "http://127.0.0.1:3000/mcp" }
+    "adscraft": { "type": "http", "url": "http://127.0.0.1:3945/mcp" }
   }
 }
 ```
 
 Keep Creator open with the project you want to work on — the tools act on the
 *open* editor, not on files on disk.
+
+The default port is **3945** (deliberately uncommon — `3000` collides with most
+dev servers). If it still clashes, set `ADSCRAFT_MCP_PORT` in the environment you
+launch Creator from; the panel always shows the port actually in use.
 
 ## Tools
 

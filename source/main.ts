@@ -37,6 +37,17 @@ const version = (): string => {
 
 const ctx: ToolContext = { bridge: createBridge() }
 
+/**
+ * Port override for cases where even `3945` clashes: `ADSCRAFT_MCP_PORT=4000`.
+ * Invalid values are ignored so a typo never stops the server from starting.
+ */
+const portOverride = (): number | undefined => {
+  const raw = process.env['ADSCRAFT_MCP_PORT']
+  if (!raw) return undefined
+  const value = Number.parseInt(raw, 10)
+  return Number.isInteger(value) && value > 0 && value < 65536 ? value : undefined
+}
+
 const isEnabled = async (): Promise<boolean> =>
   (await editor().Profile.getProject(EXTENSION_NAME, PROFILE_KEY)) !== false
 
@@ -50,7 +61,12 @@ const status = async (): Promise<Record<string, unknown>> => ({
 
 const start = async (): Promise<void> => {
   try {
-    await startMcp(ctx, { serverInfo: { name: EXTENSION_NAME, version: version() } })
+    const options: { port?: number; serverInfo: { name: string; version: string } } = {
+      serverInfo: { name: EXTENSION_NAME, version: version() },
+    }
+    const port = portOverride()
+    if (port !== undefined) options.port = port
+    await startMcp(ctx, options)
     console.log(`[adscraft-mcp] listening on ${mcpStatus().url}`)
   } catch (err) {
     // Never let a failure here kill the extension — the panel still has to open

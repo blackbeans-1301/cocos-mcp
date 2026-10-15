@@ -26,6 +26,17 @@ const version = () => {
     }
 };
 const ctx = { bridge: (0, bridge_js_1.createBridge)() };
+/**
+ * Port override for cases where even `3945` clashes: `ADSCRAFT_MCP_PORT=4000`.
+ * Invalid values are ignored so a typo never stops the server from starting.
+ */
+const portOverride = () => {
+    const raw = process.env['ADSCRAFT_MCP_PORT'];
+    if (!raw)
+        return undefined;
+    const value = Number.parseInt(raw, 10);
+    return Number.isInteger(value) && value > 0 && value < 65536 ? value : undefined;
+};
 const isEnabled = async () => (await editor().Profile.getProject(bridge_js_1.EXTENSION_NAME, PROFILE_KEY)) !== false;
 const status = async () => ({
     ...(0, session_js_1.mcpStatus)(),
@@ -36,7 +47,13 @@ const status = async () => ({
 });
 const start = async () => {
     try {
-        await (0, session_js_1.startMcp)(ctx, { serverInfo: { name: bridge_js_1.EXTENSION_NAME, version: version() } });
+        const options = {
+            serverInfo: { name: bridge_js_1.EXTENSION_NAME, version: version() },
+        };
+        const port = portOverride();
+        if (port !== undefined)
+            options.port = port;
+        await (0, session_js_1.startMcp)(ctx, options);
         console.log(`[adscraft-mcp] listening on ${(0, session_js_1.mcpStatus)().url}`);
     }
     catch (err) {
