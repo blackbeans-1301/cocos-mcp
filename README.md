@@ -1,5 +1,7 @@
 # AdsCraft MCP
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 An open **MCP server for Cocos Creator 3.8.8**. It lets AI assistants (Claude Code,
 Cursor, Windsurf, …) read and drive the project open in the editor over the
 [Model Context Protocol](https://modelcontextprotocol.io): inspect the scene tree,
@@ -153,4 +155,4 @@ the engine API (`cc`), and **have not yet been exercised inside a real Creator
 
 ## License
 
-MIT © AdsCraft. See [LICENSE](./LICENSE).
+MIT © AdsCraft team. See [LICENSE](./LICENSE).

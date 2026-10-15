@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "package_version": 2,
   "description": "AdsCraft MCP — let AI assistants drive Cocos Creator 3.8.8 (scenes, nodes, components, prefabs, assets) over the Model Context Protocol.",
-  "author": "AdsCraft",
+  "author": "AdsCraft team",
   "license": "MIT",
   "private": true,
   "type": "commonjs",
