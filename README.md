@@ -68,6 +68,24 @@ claude mcp add --transport http adscraft http://127.0.0.1:3945/mcp
 }
 ```
 
+### Auto-configure
+
+You do not have to hand-edit those files. Open **Extension → AdsCraft MCP →
+Coding agents** and click **Configure** per agent (or **Configure all detected**).
+Supported: Cursor, Claude Code, Windsurf, OpenCode, VS Code (workspace
+`.vscode/mcp.json`), Codex CLI. Other servers in those files are preserved, an
+invalid-JSON file is left untouched, and changing the port rewrites the endpoint
+in every agent already configured.
+
+The same writer is available from a shell, handy for a dotfiles/onboarding script:
+
+```bash
+node dist/cli.js --list                 # show the agents found on this machine
+node dist/cli.js                        # add to every detected agent
+node dist/cli.js --remove               # remove from every agent
+node dist/cli.js --agent cursor --add   # one agent
+```
+
 Keep Creator open with the project you want to work on — the tools act on the
 *open* editor, not on files on disk.
 
@@ -81,8 +99,8 @@ shows the port actually in use.
 
 **Extension → AdsCraft MCP** (or `Cmd/Ctrl+Shift+M`) opens a small panel that
 shows whether the server is running, the endpoint, the tool count, and lets you
-turn the server on/off, change the port, copy a ready-to-paste client config, and
-restart the server.
+turn the server on/off, change the port, copy a ready-to-paste client config,
+configure your coding agents, and restart the server.
 
 ## Tools
 

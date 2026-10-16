@@ -6,7 +6,9 @@
  * to a running editor without extra steps. It can be turned off in the panel,
  * and the choice is remembered per project.
  */
+import { homedir } from 'node:os'
 import { createBridge, EXTENSION_NAME } from './bridge.js'
+import { agentStates, configureAgent, type InstallContext } from './config/install.js'
 import { DEFAULT_MCP_PORT, mcpStatus, startMcp, stopMcp } from './mcp/session.js'
 import { TOOLS, type ToolContext } from './tools/index.js'
 
@@ -21,6 +23,7 @@ interface ProfileApi {
 interface EditorApi {
   Profile: ProfileApi
   Panel: { open(name: string): Promise<void> }
+  Project: { path: string }
 }
 
 const editor = (): EditorApi => (globalThis as unknown as { Editor: EditorApi }).Editor
@@ -86,12 +89,29 @@ const start = async (): Promise<void> => {
   }
 }
 
+/** Where the coding-agent installer reads/writes: the user's home and the open project. */
+const installContext = async (): Promise<InstallContext> => {
+  const desired = await desiredPort()
+  return {
+    home: homedir(),
+    projectPath: editor().Project.path,
+    url: mcpStatus().url || `http://127.0.0.1:${desired}/mcp`,
+  }
+}
+
 export const methods = {
   'open-panel': async () => {
     await editor().Panel.open(`${EXTENSION_NAME}.main`)
   },
 
   'mcp-status': () => status(),
+
+  /** Which coding agents were found on this machine and whether we are configured in them. */
+  'mcp-agents': async () => agentStates(await installContext()),
+
+  /** Add or remove our MCP server in one agent's config. */
+  'mcp-configure-agent': async (id: string, mode: 'add' | 'remove') =>
+    configureAgent(await installContext(), id, mode === 'remove' ? 'remove' : 'add'),
 
   'mcp-set-enabled': async (enabled: boolean) => {
     await editor().Profile.setProject(EXTENSION_NAME, PROFILE_KEY, enabled === true)

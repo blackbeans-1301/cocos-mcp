@@ -9,7 +9,9 @@ exports.unload = exports.load = exports.methods = void 0;
  * to a running editor without extra steps. It can be turned off in the panel,
  * and the choice is remembered per project.
  */
+const node_os_1 = require("node:os");
 const bridge_js_1 = require("./bridge.js");
+const install_js_1 = require("./config/install.js");
 const session_js_1 = require("./mcp/session.js");
 const index_js_1 = require("./tools/index.js");
 const PROFILE_KEY = 'mcpEnabled';
@@ -66,11 +68,24 @@ const start = async () => {
         console.error('[adscraft-mcp] failed to start:', err);
     }
 };
+/** Where the coding-agent installer reads/writes: the user's home and the open project. */
+const installContext = async () => {
+    const desired = await desiredPort();
+    return {
+        home: (0, node_os_1.homedir)(),
+        projectPath: editor().Project.path,
+        url: (0, session_js_1.mcpStatus)().url || `http://127.0.0.1:${desired}/mcp`,
+    };
+};
 exports.methods = {
     'open-panel': async () => {
         await editor().Panel.open(`${bridge_js_1.EXTENSION_NAME}.main`);
     },
     'mcp-status': () => status(),
+    /** Which coding agents were found on this machine and whether we are configured in them. */
+    'mcp-agents': async () => (0, install_js_1.agentStates)(await installContext()),
+    /** Add or remove our MCP server in one agent's config. */
+    'mcp-configure-agent': async (id, mode) => (0, install_js_1.configureAgent)(await installContext(), id, mode === 'remove' ? 'remove' : 'add'),
     'mcp-set-enabled': async (enabled) => {
         await editor().Profile.setProject(bridge_js_1.EXTENSION_NAME, PROFILE_KEY, enabled === true);
         if (enabled === true)

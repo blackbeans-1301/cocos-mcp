@@ -48,6 +48,8 @@
       "mcp-status": { "methods": ["mcp-status"] },
       "mcp-set-enabled": { "methods": ["mcp-set-enabled"] },
       "mcp-set-port": { "methods": ["mcp-set-port"] },
+      "mcp-agents": { "methods": ["mcp-agents"] },
+      "mcp-configure-agent": { "methods": ["mcp-configure-agent"] },
       "mcp-restart": { "methods": ["mcp-restart"] }
     },
     "scene": {

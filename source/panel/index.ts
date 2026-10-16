@@ -20,6 +20,17 @@ interface Status {
   editorVersion: string
 }
 
+interface AgentState {
+  id: string
+  name: string
+  file: string
+  scope: 'home' | 'project'
+  installed: boolean
+  configured: boolean
+  docs: string
+  error: string
+}
+
 export const template = `
 <div class="mcp-root">
   <header class="mcp-header">
@@ -70,6 +81,17 @@ export const template = `
     </div>
   </section>
 
+  <section class="mcp-card">
+    <div class="mcp-row mcp-row-head">
+      <span class="mcp-label">Coding agents</span>
+      <button class="mcp-btn" id="configure-all">Configure all detected</button>
+    </div>
+    <ul class="mcp-agents" id="agents"></ul>
+    <p class="mcp-note" id="agents-note">
+      Registers the endpoint in each agent's MCP config. Existing servers are left untouched.
+    </p>
+  </section>
+
   <footer class="mcp-footer">
     <span id="editor"></span>
     <a id="docs" href="https://adscraft.app" target="_blank" rel="noreferrer">adscraft.app ↗</a>
@@ -99,6 +121,14 @@ export const style = `
 .mcp-input { width: 96px; background: #12141a; border: 1px solid #333a49; color: #e6e8ef;
   border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .mcp-input:focus { outline: none; border-color: #2f6bff; }
+.mcp-row-head { justify-content: space-between; }
+.mcp-agents { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mcp-agent { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 9px; border: 1px solid #262a36; border-radius: 8px; background: #171a22; }
+.mcp-agent-name { font-size: 13px; }
+.mcp-agent-meta { font-size: 11px; color: #9aa3b2; margin-left: 6px; }
+.mcp-agent-meta.ok { color: #4ade80; }
+.mcp-agent-meta.off { opacity: .6; }
 .mcp-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .mcp-btn { border: 1px solid #333a49; background: #232733; color: #e6e8ef; border-radius: 8px;
   padding: 7px 12px; font-size: 12px; cursor: pointer; }
@@ -122,6 +152,8 @@ export function ready(): void {
   $('restart')?.addEventListener('click', () => void restart())
   $('copy')?.addEventListener('click', () => void copyConfig())
   $('save-port')?.addEventListener('click', () => void savePort())
+  $('configure-all')?.addEventListener('click', () => void configureAll())
+  void loadAgents()
 }
 
 export function beforeClose(): void {
@@ -159,10 +191,89 @@ const savePort = async (): Promise<void> => {
   if (!input) return
   try {
     await message.request(EXTENSION, 'mcp-set-port', Number.parseInt(input.value, 10))
+    // Agents configured on the old endpoint would now be stale — rewrite them.
+    await refreshConfiguredAgents()
     note('port-note', 'Saved — server restarted.')
     await refresh()
   } catch (err) {
     note('port-note', err instanceof Error ? err.message : String(err), true)
+  }
+}
+
+const loadAgents = async (): Promise<void> => {
+  try {
+    renderAgents((await message.request(EXTENSION, 'mcp-agents')) as AgentState[])
+  } catch {
+    /* the panel still works without the agent list */
+  }
+}
+
+const agentLabel = (agent: AgentState): string =>
+  agent.error ? agent.error : agent.configured ? 'configured' : agent.installed ? 'detected' : 'not found'
+
+const renderAgents = (agents: AgentState[]): void => {
+  const list = $('agents')
+  if (!list) return
+  list.replaceChildren(
+    ...agents.map((agent) => {
+      const item = document.createElement('li')
+      item.className = 'mcp-agent'
+
+      const left = document.createElement('span')
+      const name = document.createElement('span')
+      name.className = 'mcp-agent-name'
+      name.textContent = agent.name
+      const meta = document.createElement('span')
+      meta.className = `mcp-agent-meta ${agent.configured ? 'ok' : agent.installed ? '' : 'off'}`
+      meta.textContent = agentLabel(agent)
+      left.append(name, meta)
+
+      const button = document.createElement('button')
+      button.className = 'mcp-btn'
+      button.textContent = agent.configured ? 'Remove' : 'Configure'
+      button.addEventListener('click', () => void toggleAgent(agent, button))
+
+      item.append(left, button)
+      return item
+    }),
+  )
+}
+
+const toggleAgent = async (agent: AgentState, button: HTMLButtonElement): Promise<void> => {
+  button.disabled = true
+  try {
+    await message.request(EXTENSION, 'mcp-configure-agent', agent.id, agent.configured ? 'remove' : 'add')
+    note('agents-note', `${agent.configured ? 'Removed from' : 'Added to'} ${agent.name}.`)
+  } catch (err) {
+    note('agents-note', err instanceof Error ? err.message : String(err), true)
+  } finally {
+    button.disabled = false
+    await loadAgents()
+  }
+}
+
+const configureAll = async (): Promise<void> => {
+  try {
+    const agents = (await message.request(EXTENSION, 'mcp-agents')) as AgentState[]
+    for (const agent of agents) {
+      if (agent.installed && !agent.configured) await message.request(EXTENSION, 'mcp-configure-agent', agent.id, 'add')
+    }
+    note('agents-note', 'Configured the detected agents.')
+  } catch (err) {
+    note('agents-note', err instanceof Error ? err.message : String(err), true)
+  }
+  await loadAgents()
+}
+
+/** Re-write the endpoint in every agent we are already configured in (after a port change). */
+const refreshConfiguredAgents = async (): Promise<void> => {
+  try {
+    const agents = (await message.request(EXTENSION, 'mcp-agents')) as AgentState[]
+    for (const agent of agents) {
+      if (agent.configured) await message.request(EXTENSION, 'mcp-configure-agent', agent.id, 'add')
+    }
+  } catch {
+    /* best effort */
   }
 }
 
