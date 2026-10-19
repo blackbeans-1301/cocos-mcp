@@ -4,7 +4,8 @@
  * live scene to attach the node to.
  */
 import type { ToolDef, ToolContext } from './types.js'
-import { defined, optionalArray, optionalString, requireString } from './types.js'
+import { queryAssets } from './asset-tools.js'
+import { defined, optionalArray, optionalString, requireString, ToolInputError } from './types.js'
 
 const VEC3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: '[x, y, z]' }
 
@@ -13,7 +14,7 @@ export const prefabTools: ToolDef[] = [
     name: 'prefab_list',
     description: 'List the prefab assets in the project (url + uuid).',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    handler: (_args, ctx) => ctx.bridge.request('asset-db', 'query-assets', { type: 'cc.Prefab' }),
+    handler: (_args, ctx) => queryAssets(ctx, 'db://assets/**/*.prefab', 'cc.Prefab'),
   },
   {
     name: 'prefab_info',
@@ -29,7 +30,7 @@ export const prefabTools: ToolDef[] = [
     handler: (args, ctx) => {
       const uuid = optionalString(args, 'uuid')
       const url = optionalString(args, 'url')
-      if (!uuid && !url) return ctx.bridge.request('asset-db', 'query-assets', { type: 'cc.Prefab' })
+      if (!uuid && !url) return queryAssets(ctx, 'db://assets/**/*.prefab', 'cc.Prefab')
       return ctx.bridge.request('asset-db', 'query-asset-info', uuid ?? url)
     },
   },
@@ -70,14 +71,16 @@ export const prefabTools: ToolDef[] = [
       required: ['url'],
       additionalProperties: false,
     },
-    handler: (args, ctx) => {
-      const nodeUuid = optionalString(args, 'uuid')
+    handler: async (args, ctx) => {
+      let nodeUuid = optionalString(args, 'uuid')
       const nodePath = optionalString(args, 'path')
-      return ctx.bridge.request('scene', 'create-prefab', {
-        ...(nodeUuid === undefined ? {} : { uuid: nodeUuid }),
-        ...(nodePath === undefined ? {} : { path: nodePath }),
-        url: requireString(args, 'url'),
-      })
+      if (!nodeUuid) {
+        if (!nodePath) throw new ToolInputError('Provide "uuid" or "path".')
+        nodeUuid = ((await ctx.bridge.scene('getNode', [{ path: nodePath }])) as { uuid: string }).uuid
+      }
+      // Creator's message takes (nodeUuid, url) positionally; it returns nothing useful.
+      await ctx.bridge.request('scene', 'create-prefab', nodeUuid, requireString(args, 'url'))
+      return { created: requireString(args, 'url'), nodeUuid }
     },
   },
 ]

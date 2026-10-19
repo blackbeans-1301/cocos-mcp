@@ -9,6 +9,60 @@
 import type { ToolDef, ToolContext } from './types.js'
 import { asObject, optionalBoolean, optionalNumber, optionalString, requireString } from './types.js'
 
+/**
+ * Ring buffer of main-process output — Creator 3.8.8 has no `query-console-logs` message.
+ *
+ * Captured two ways, because which one sees a line depends on how Creator wires `console`:
+ * the global `console` methods, and `process.stdout/stderr.write` (which also carries the
+ * `[Scene] ...` lines relayed from the scene process). A line seen by both is stored once.
+ */
+const LOG_LIMIT = 500
+type LogLine = { type: string; message: string; time: string }
+// Kept on globalThis: an extension reload re-evaluates this module but the patches from the first load survive.
+const g = globalThis as unknown as { __adscraftLogHooked?: boolean; __adscraftLogBuffer?: LogLine[]; __adscraftInConsole?: boolean }
+const logBuffer: LogLine[] = (g.__adscraftLogBuffer ??= [])
+
+const record = (type: string, message: string): void => {
+  logBuffer.push({ type, message: message.replace(/\r?\n$/, ''), time: new Date().toISOString() })
+  if (logBuffer.length > LOG_LIMIT) logBuffer.shift()
+}
+
+if (!g.__adscraftLogHooked) {
+  g.__adscraftLogHooked = true
+  const fmt = (parts: unknown[]): string =>
+    parts.map((p) => (typeof p === 'string' ? p : p instanceof Error ? p.stack ?? p.message : safeJson(p))).join(' ')
+  const safeJson = (v: unknown): string => {
+    try {
+      return JSON.stringify(v) ?? String(v)
+    } catch {
+      return String(v)
+    }
+  }
+  // `console` here and `globalThis.console` can be different objects inside Creator's module wrapper.
+  const targets = new Set<Console>([console, (globalThis as unknown as { console: Console }).console])
+  for (const target of targets) {
+    for (const type of ['log', 'info', 'warn', 'error'] as const) {
+      const original = target[type].bind(target)
+      target[type] = (...parts: unknown[]) => {
+        record(type, fmt(parts))
+        g.__adscraftInConsole = true
+        try {
+          original(...parts)
+        } finally {
+          g.__adscraftInConsole = false
+        }
+      }
+    }
+  }
+  for (const [stream, type] of [[process.stdout, 'log'], [process.stderr, 'error']] as const) {
+    const original = stream.write.bind(stream) as (chunk: unknown, ...rest: unknown[]) => boolean
+    ;(stream as unknown as { write: typeof original }).write = (chunk, ...rest) => {
+      if (!g.__adscraftInConsole) record(type, typeof chunk === 'string' ? chunk : Buffer.from(chunk as Uint8Array).toString('utf8'))
+      return original(chunk, ...rest)
+    }
+  }
+}
+
 const normalizeConsole = (raw: unknown): Array<Record<string, unknown>> => {
   const list = Array.isArray(raw) ? raw : []
   return list.map((entry) => {
@@ -60,7 +114,7 @@ export const editorTools: ToolDef[] = [
   },
   {
     name: 'editor_console_logs',
-    description: 'Read recent editor/console log lines (best effort — depends on the Creator build).',
+    description: 'Read recent editor/console log lines (captured from the editor main process since the extension loaded).',
     inputSchema: {
       type: 'object',
       properties: { limit: { type: 'number', description: 'Max lines to return (default 100).' } },
@@ -68,16 +122,7 @@ export const editorTools: ToolDef[] = [
     },
     handler: async (args, ctx) => {
       const limit = optionalNumber(args, 'limit') ?? 100
-      try {
-        const raw = await ctx.bridge.request('scene', 'query-console-logs')
-        return { entries: normalizeConsole(raw).slice(-limit) }
-      } catch (err) {
-        return {
-          entries: [],
-          error: err instanceof Error ? err.message : String(err),
-          hint: 'Console reading depends on the Creator build. Use editor_script to read logs directly if this fails.',
-        }
-      }
+      return { entries: normalizeConsole(logBuffer).slice(-limit), total: logBuffer.length, note: 'Captured since the extension loaded (console + stdout/stderr of the editor main process).' }
     },
   },
   escapeHatch(
@@ -120,7 +165,12 @@ export const editorTools: ToolDef[] = [
       }
       const buildPath = optionalString(args, 'buildPath')
       if (buildPath) options['buildPath'] = buildPath
-      return ctx.bridge.request('builder', 'add-task', options)
+      const task = await ctx.bridge.request('builder', 'add-task', options)
+      return {
+        started: true,
+        task,
+        hint: 'The build runs in the background — this call does not wait. It is done when <buildPath or build/>/<platform>/index.html exists.',
+      }
     },
   },
 ]

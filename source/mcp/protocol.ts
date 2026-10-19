@@ -120,7 +120,7 @@ export const handleMessage = async (
         if ('toolError' in called) {
           return { body: success(id, { content: [{ type: 'text', text: called.toolError }], isError: true }) }
         }
-        return { body: success(id, { content: [{ type: 'text', text: JSON.stringify(called.result, null, 2) }] }) }
+        return { body: success(id, { content: [{ type: 'text', text: JSON.stringify(called.result ?? null, null, 2) }] }) }
       } catch (err) {
         if (err instanceof ToolInputError) return { body: failure(id, INVALID_PARAMS, err.message) }
         throw err

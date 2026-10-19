@@ -41,10 +41,16 @@ const scene = () => {
         fail('No scene is open in the editor.');
     return s;
 };
+/** Editor-internal nodes (gizmo/foreground/background layers) are not part of the user's scene. */
+const isEditorInternal = (node) => {
+    const hidden = (cc().CCObject ?? cc().Object)?.Flags?.HideInHierarchy ?? 0;
+    return (hidden !== 0 && (node.objFlags & hidden) !== 0) || /^Editor Scene /.test(node.name);
+};
+const visibleChildren = (node) => node.children.filter((child) => !isEditorInternal(child));
 const walk = (node, visit) => {
     if (visit(node))
         return node;
-    for (const child of node.children) {
+    for (const child of visibleChildren(node)) {
         const found = walk(child, visit);
         if (found)
             return found;
@@ -83,6 +89,8 @@ const resolveNode = (arg) => {
     }
     fail('Provide "uuid" or "path" to identify the node.');
 };
+/** The parent named by `parentUuid`/`parentPath`, or the scene root when neither is given. */
+const resolveParent = (options) => options.parentUuid || options.parentPath ? resolveNode({ uuid: options.parentUuid, path: options.parentPath }) : scene();
 const vec = (value, Ctor) => {
     if (value === undefined || value === null)
         return undefined;
@@ -133,13 +141,13 @@ const nodeDump = (node, includeComponents = true) => ({
     position: { x: node.position.x, y: node.position.y, z: node.position.z },
     rotation: { x: node.eulerAngles.x, y: node.eulerAngles.y, z: node.eulerAngles.z },
     scale: { x: node.scale.x, y: node.scale.y, z: node.scale.z },
-    childCount: node.children.length,
+    childCount: visibleChildren(node).length,
     ...(includeComponents ? { components: componentTypes(node) } : {}),
 });
 const tree = (node, depth, maxDepth, includeComponents) => {
     const out = nodeDump(node, includeComponents);
     out['children'] =
-        depth >= maxDepth ? [] : node.children.map((child) => tree(child, depth + 1, maxDepth, includeComponents));
+        depth >= maxDepth ? [] : visibleChildren(node).map((child) => tree(child, depth + 1, maxDepth, includeComponents));
     return out;
 };
 const findComponent = (node, type, index) => {
@@ -184,7 +192,7 @@ exports.methods = {
         const [options = {}] = args;
         const C = cc();
         const node = new C.Node(options.name || 'New Node');
-        const parent = options.parentUuid || options.parentPath ? resolveNode(options) : scene();
+        const parent = resolveParent(options);
         parent.addChild(node);
         if (options.position)
             node.setPosition(vec(options.position, C.Vec3));
@@ -244,7 +252,13 @@ exports.methods = {
     setNodeParent(args = []) {
         const [options = {}] = args;
         const node = resolveNode(options);
-        const parent = options.parentUuid || options.parentPath ? resolveNode(options) : scene();
+        const parent = resolveParent(options);
+        if (node === scene())
+            fail('Cannot reparent the scene root.');
+        for (let up = parent; up; up = up.parent) {
+            if (up === node)
+                fail('Cannot make a node a child of itself or of its own descendant.');
+        }
         node.setParent(parent, options.keepWorldTransform === true);
         return nodeDump(node);
     },
@@ -277,7 +291,10 @@ exports.methods = {
         const node = resolveNode(options);
         const component = findComponent(node, options.type, options.index);
         component.destroy();
-        return nodeDump(node);
+        // destroy() is deferred to the end of the frame, so `node.components` still lists it — drop it from the reply.
+        const dump = nodeDump(node);
+        const remaining = node.components.filter((c) => c !== component);
+        return { ...dump, components: remaining.map((c) => cc().js.getClassName(c)).filter(Boolean) };
     },
     getComponentProperty(args = []) {
         const [options = {}] = args;
@@ -325,7 +342,7 @@ exports.methods = {
             C.assetManager.loadAny({ uuid: options.uuid }, (err, asset) => err ? reject(err) : resolve(asset));
         });
         const node = C.instantiate(prefab);
-        const parent = options.parentUuid || options.parentPath ? resolveNode(options) : scene();
+        const parent = resolveParent(options);
         parent.addChild(node);
         if (options.position)
             node.setPosition(vec(options.position, C.Vec3));

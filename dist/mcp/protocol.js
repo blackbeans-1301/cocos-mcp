@@ -71,7 +71,7 @@ newSessionId) => {
                 if ('toolError' in called) {
                     return { body: success(id, { content: [{ type: 'text', text: called.toolError }], isError: true }) };
                 }
-                return { body: success(id, { content: [{ type: 'text', text: JSON.stringify(called.result, null, 2) }] }) };
+                return { body: success(id, { content: [{ type: 'text', text: JSON.stringify(called.result ?? null, null, 2) }] }) };
             }
             catch (err) {
                 if (err instanceof index_js_1.ToolInputError)

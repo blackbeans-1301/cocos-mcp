@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.assetTools = void 0;
+exports.assetTools = exports.queryAssets = exports.slimAssets = exports.toContent = void 0;
 const types_js_1 = require("./types.js");
 /** Accept a uuid or a db:// url (asset-db accepts either in most messages). */
 const target = (args) => {
@@ -10,6 +10,24 @@ const target = (args) => {
         throw new Error('Provide "uuid" or "url".');
     return uuid ?? url;
 };
+/** asset-db wants string content; objects (JSON assets) are serialised. */
+const toContent = (value) => {
+    if (value === undefined || value === null)
+        return '';
+    return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+};
+exports.toContent = toContent;
+/** Slim an asset-db record to what an agent needs (the raw records are huge). */
+const slimAssets = (raw) => Array.isArray(raw)
+    ? raw.map((a) => {
+        const r = (a ?? {});
+        return { url: r['url'], uuid: r['uuid'], type: r['type'], name: r['name'] };
+    })
+    : raw;
+exports.slimAssets = slimAssets;
+/** `query-assets` filters by `ccType`/`pattern`; an unknown `type` key is silently ignored. */
+const queryAssets = async (ctx, pattern, ccType) => (0, exports.slimAssets)(await ctx.bridge.request('asset-db', 'query-assets', (0, types_js_1.defined)({ pattern: pattern ?? 'db://assets/**', ccType })));
+exports.queryAssets = queryAssets;
 exports.assetTools = [
     {
         name: 'asset_query',
@@ -22,7 +40,7 @@ exports.assetTools = [
             },
             additionalProperties: false,
         },
-        handler: (args, ctx) => ctx.bridge.request('asset-db', 'query-assets', (0, types_js_1.defined)({ pattern: (0, types_js_1.optionalString)(args, 'pattern'), type: (0, types_js_1.optionalString)(args, 'type') })),
+        handler: (args, ctx) => (0, exports.queryAssets)(ctx, (0, types_js_1.optionalString)(args, 'pattern'), (0, types_js_1.optionalString)(args, 'type')),
     },
     {
         name: 'asset_info',
@@ -46,7 +64,7 @@ exports.assetTools = [
             required: ['url'],
             additionalProperties: false,
         },
-        handler: (args, ctx) => ctx.bridge.request('asset-db', 'create-asset', (0, types_js_1.requireString)(args, 'url'), args['content'] ?? null),
+        handler: (args, ctx) => ctx.bridge.request('asset-db', 'create-asset', (0, types_js_1.requireString)(args, 'url'), (0, exports.toContent)(args['content']), { overwrite: true }),
     },
     {
         name: 'asset_save',
@@ -57,7 +75,7 @@ exports.assetTools = [
             required: ['content'],
             additionalProperties: false,
         },
-        handler: (args, ctx) => ctx.bridge.request('asset-db', 'save-asset', target(args), args['content']),
+        handler: (args, ctx) => ctx.bridge.request('asset-db', 'save-asset', target(args), (0, exports.toContent)(args['content'])),
     },
     {
         name: 'asset_move',

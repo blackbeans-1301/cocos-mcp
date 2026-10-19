@@ -2,6 +2,59 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.editorTools = void 0;
 const types_js_1 = require("./types.js");
+/**
+ * Ring buffer of main-process output — Creator 3.8.8 has no `query-console-logs` message.
+ *
+ * Captured two ways, because which one sees a line depends on how Creator wires `console`:
+ * the global `console` methods, and `process.stdout/stderr.write` (which also carries the
+ * `[Scene] ...` lines relayed from the scene process). A line seen by both is stored once.
+ */
+const LOG_LIMIT = 500;
+// Kept on globalThis: an extension reload re-evaluates this module but the patches from the first load survive.
+const g = globalThis;
+const logBuffer = (g.__adscraftLogBuffer ??= []);
+const record = (type, message) => {
+    logBuffer.push({ type, message: message.replace(/\r?\n$/, ''), time: new Date().toISOString() });
+    if (logBuffer.length > LOG_LIMIT)
+        logBuffer.shift();
+};
+if (!g.__adscraftLogHooked) {
+    g.__adscraftLogHooked = true;
+    const fmt = (parts) => parts.map((p) => (typeof p === 'string' ? p : p instanceof Error ? p.stack ?? p.message : safeJson(p))).join(' ');
+    const safeJson = (v) => {
+        try {
+            return JSON.stringify(v) ?? String(v);
+        }
+        catch {
+            return String(v);
+        }
+    };
+    // `console` here and `globalThis.console` can be different objects inside Creator's module wrapper.
+    const targets = new Set([console, globalThis.console]);
+    for (const target of targets) {
+        for (const type of ['log', 'info', 'warn', 'error']) {
+            const original = target[type].bind(target);
+            target[type] = (...parts) => {
+                record(type, fmt(parts));
+                g.__adscraftInConsole = true;
+                try {
+                    original(...parts);
+                }
+                finally {
+                    g.__adscraftInConsole = false;
+                }
+            };
+        }
+    }
+    for (const [stream, type] of [[process.stdout, 'log'], [process.stderr, 'error']]) {
+        const original = stream.write.bind(stream);
+        stream.write = (chunk, ...rest) => {
+            if (!g.__adscraftInConsole)
+                record(type, typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+            return original(chunk, ...rest);
+        };
+    }
+}
 const normalizeConsole = (raw) => {
     const list = Array.isArray(raw) ? raw : [];
     return list.map((entry) => {
@@ -51,7 +104,7 @@ exports.editorTools = [
     },
     {
         name: 'editor_console_logs',
-        description: 'Read recent editor/console log lines (best effort — depends on the Creator build).',
+        description: 'Read recent editor/console log lines (captured from the editor main process since the extension loaded).',
         inputSchema: {
             type: 'object',
             properties: { limit: { type: 'number', description: 'Max lines to return (default 100).' } },
@@ -59,17 +112,7 @@ exports.editorTools = [
         },
         handler: async (args, ctx) => {
             const limit = (0, types_js_1.optionalNumber)(args, 'limit') ?? 100;
-            try {
-                const raw = await ctx.bridge.request('scene', 'query-console-logs');
-                return { entries: normalizeConsole(raw).slice(-limit) };
-            }
-            catch (err) {
-                return {
-                    entries: [],
-                    error: err instanceof Error ? err.message : String(err),
-                    hint: 'Console reading depends on the Creator build. Use editor_script to read logs directly if this fails.',
-                };
-            }
+            return { entries: normalizeConsole(logBuffer).slice(-limit), total: logBuffer.length, note: 'Captured since the extension loaded (console + stdout/stderr of the editor main process).' };
         },
     },
     escapeHatch('editor_script', 'Escape hatch: run JavaScript in the editor main process. In scope: `Editor`, `require`, `args`. Return a JSON-serializable value.', async (code, args) => {
@@ -106,7 +149,12 @@ exports.editorTools = [
             const buildPath = (0, types_js_1.optionalString)(args, 'buildPath');
             if (buildPath)
                 options['buildPath'] = buildPath;
-            return ctx.bridge.request('builder', 'add-task', options);
+            const task = await ctx.bridge.request('builder', 'add-task', options);
+            return {
+                started: true,
+                task,
+                hint: 'The build runs in the background — this call does not wait. It is done when <buildPath or build/>/<platform>/index.html exists.',
+            };
         },
     },
 ];

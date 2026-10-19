@@ -6,14 +6,16 @@
  * messages). Message names live in one place per tool so a Creator build that
  * differs is a one-line fix (see `README.md` › Verification).
  */
+import { readFileSync } from 'node:fs'
 import type { ToolDef, ToolContext } from './types.js'
+import { queryAssets } from './asset-tools.js'
 import { defined, optionalString, requireString, ToolInputError } from './types.js'
 
 const sceneCall = (ctx: ToolContext, method: string): Promise<unknown> => ctx.bridge.scene(method, [])
 
 /** `.scene` assets in the project (asset-db `query-assets`, type `cc.SceneAsset`). */
 export const sceneList = async (ctx: ToolContext): Promise<unknown> =>
-  ctx.bridge.request('asset-db', 'query-assets', { type: 'cc.SceneAsset' })
+  queryAssets(ctx, 'db://assets/**/*.scene', 'cc.SceneAsset')
 
 export const sceneTools: ToolDef[] = [
   {
@@ -69,7 +71,18 @@ export const sceneTools: ToolDef[] = [
     },
     handler: async (args, ctx) => {
       const url = requireString(args, 'url')
-      const created = await ctx.bridge.request('asset-db', 'create-asset', url, null)
+      // `create-asset` with null content makes a *directory*; a scene needs the engine's default scene file.
+      const template = (await ctx.bridge.request('asset-db', 'query-asset-info', 'db://internal/default_file_content/scene/default.scene')) as
+        | { file?: string }
+        | null
+      if (!template?.file) throw new Error('Default scene template not found in db://internal.')
+      const content = readFileSync(template.file, 'utf8')
+      const created = await ctx.bridge.request('asset-db', 'create-asset', url, content)
+      const uuid = (created as { uuid?: string } | null)?.uuid
+      if (uuid) {
+        await ctx.bridge.request('scene', 'open-scene', uuid)
+        await ctx.bridge.request('scene', 'save-scene')
+      }
       return defined({ created })
     },
   },

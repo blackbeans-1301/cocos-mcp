@@ -14,6 +14,25 @@ const target = (args: Record<string, unknown>): string => {
   return uuid ?? (url as string)
 }
 
+/** asset-db wants string content; objects (JSON assets) are serialised. */
+export const toContent = (value: unknown): string => {
+  if (value === undefined || value === null) return ''
+  return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+}
+
+/** Slim an asset-db record to what an agent needs (the raw records are huge). */
+export const slimAssets = (raw: unknown): unknown =>
+  Array.isArray(raw)
+    ? raw.map((a) => {
+        const r = (a ?? {}) as Record<string, unknown>
+        return { url: r['url'], uuid: r['uuid'], type: r['type'], name: r['name'] }
+      })
+    : raw
+
+/** `query-assets` filters by `ccType`/`pattern`; an unknown `type` key is silently ignored. */
+export const queryAssets = async (ctx: ToolContext, pattern: string | undefined, ccType: string | undefined): Promise<unknown> =>
+  slimAssets(await ctx.bridge.request('asset-db', 'query-assets', defined({ pattern: pattern ?? 'db://assets/**', ccType })))
+
 export const assetTools: ToolDef[] = [
   {
     name: 'asset_query',
@@ -26,8 +45,7 @@ export const assetTools: ToolDef[] = [
       },
       additionalProperties: false,
     },
-    handler: (args, ctx) =>
-      ctx.bridge.request('asset-db', 'query-assets', defined({ pattern: optionalString(args, 'pattern'), type: optionalString(args, 'type') })),
+    handler: (args, ctx) => queryAssets(ctx, optionalString(args, 'pattern'), optionalString(args, 'type')),
   },
   {
     name: 'asset_info',
@@ -52,7 +70,7 @@ export const assetTools: ToolDef[] = [
       additionalProperties: false,
     },
     handler: (args, ctx) =>
-      ctx.bridge.request('asset-db', 'create-asset', requireString(args, 'url'), args['content'] ?? null),
+      ctx.bridge.request('asset-db', 'create-asset', requireString(args, 'url'), toContent(args['content']), { overwrite: true }),
   },
   {
     name: 'asset_save',
@@ -63,7 +81,7 @@ export const assetTools: ToolDef[] = [
       required: ['content'],
       additionalProperties: false,
     },
-    handler: (args, ctx) => ctx.bridge.request('asset-db', 'save-asset', target(args), args['content']),
+    handler: (args, ctx) => ctx.bridge.request('asset-db', 'save-asset', target(args), toContent(args['content'])),
   },
   {
     name: 'asset_move',

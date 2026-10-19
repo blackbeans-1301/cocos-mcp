@@ -52,7 +52,8 @@ export const createBridge = (): Bridge => {
       editor.Message.request('scene', 'execute-scene-script', {
         name: EXTENSION_NAME,
         method,
-        args,
+        // Creator spreads `args` into the method call; scene.ts methods take the whole list as one parameter.
+        args: [args],
       }),
     projectPath: () => editor.Project.path,
     editorVersion: () => editor.App.version,

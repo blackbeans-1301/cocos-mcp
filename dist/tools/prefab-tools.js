@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.prefabTools = void 0;
+const asset_tools_js_1 = require("./asset-tools.js");
 const types_js_1 = require("./types.js");
 const VEC3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: '[x, y, z]' };
 exports.prefabTools = [
@@ -8,7 +9,7 @@ exports.prefabTools = [
         name: 'prefab_list',
         description: 'List the prefab assets in the project (url + uuid).',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-        handler: (_args, ctx) => ctx.bridge.request('asset-db', 'query-assets', { type: 'cc.Prefab' }),
+        handler: (_args, ctx) => (0, asset_tools_js_1.queryAssets)(ctx, 'db://assets/**/*.prefab', 'cc.Prefab'),
     },
     {
         name: 'prefab_info',
@@ -25,7 +26,7 @@ exports.prefabTools = [
             const uuid = (0, types_js_1.optionalString)(args, 'uuid');
             const url = (0, types_js_1.optionalString)(args, 'url');
             if (!uuid && !url)
-                return ctx.bridge.request('asset-db', 'query-assets', { type: 'cc.Prefab' });
+                return (0, asset_tools_js_1.queryAssets)(ctx, 'db://assets/**/*.prefab', 'cc.Prefab');
             return ctx.bridge.request('asset-db', 'query-asset-info', uuid ?? url);
         },
     },
@@ -65,14 +66,17 @@ exports.prefabTools = [
             required: ['url'],
             additionalProperties: false,
         },
-        handler: (args, ctx) => {
-            const nodeUuid = (0, types_js_1.optionalString)(args, 'uuid');
+        handler: async (args, ctx) => {
+            let nodeUuid = (0, types_js_1.optionalString)(args, 'uuid');
             const nodePath = (0, types_js_1.optionalString)(args, 'path');
-            return ctx.bridge.request('scene', 'create-prefab', {
-                ...(nodeUuid === undefined ? {} : { uuid: nodeUuid }),
-                ...(nodePath === undefined ? {} : { path: nodePath }),
-                url: (0, types_js_1.requireString)(args, 'url'),
-            });
+            if (!nodeUuid) {
+                if (!nodePath)
+                    throw new types_js_1.ToolInputError('Provide "uuid" or "path".');
+                nodeUuid = (await ctx.bridge.scene('getNode', [{ path: nodePath }])).uuid;
+            }
+            // Creator's message takes (nodeUuid, url) positionally; it returns nothing useful.
+            await ctx.bridge.request('scene', 'create-prefab', nodeUuid, (0, types_js_1.requireString)(args, 'url'));
+            return { created: (0, types_js_1.requireString)(args, 'url'), nodeUuid };
         },
     },
 ];
