@@ -8,6 +8,7 @@ const node_tools_js_1 = require("./node-tools.js");
 const component_tools_js_1 = require("./component-tools.js");
 const prefab_tools_js_1 = require("./prefab-tools.js");
 const asset_tools_js_1 = require("./asset-tools.js");
+const script_tools_js_1 = require("./script-tools.js");
 var types_js_2 = require("./types.js");
 Object.defineProperty(exports, "ToolInputError", { enumerable: true, get: function () { return types_js_2.ToolInputError; } });
 exports.TOOLS = [
@@ -17,6 +18,7 @@ exports.TOOLS = [
     ...component_tools_js_1.componentTools,
     ...prefab_tools_js_1.prefabTools,
     ...asset_tools_js_1.assetTools,
+    ...script_tools_js_1.scriptTools,
 ];
 // Duplicate names would make tools/list ambiguous and the bug hard to see; fail loud at load.
 {

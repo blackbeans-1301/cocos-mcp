@@ -9,6 +9,7 @@ import { nodeTools } from './node-tools.js'
 import { componentTools } from './component-tools.js'
 import { prefabTools } from './prefab-tools.js'
 import { assetTools } from './asset-tools.js'
+import { scriptTools } from './script-tools.js'
 
 export { ToolInputError } from './types.js'
 export type { ToolContext, ToolDef, JsonSchema } from './types.js'
@@ -20,6 +21,7 @@ export const TOOLS: ToolDef[] = [
   ...componentTools,
   ...prefabTools,
   ...assetTools,
+  ...scriptTools,
 ]
 
 // Duplicate names would make tools/list ambiguous and the bug hard to see; fail loud at load.

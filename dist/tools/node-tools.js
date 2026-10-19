@@ -140,8 +140,34 @@ exports.nodeTools = [
         })),
     },
     {
+        name: 'node_set_sibling_index',
+        description: 'Move a node to a position among its siblings (render/layout order).',
+        inputSchema: {
+            type: 'object',
+            properties: { ...REF_PROPS, index: { type: 'number', description: 'Target index; large values go last.' } },
+            required: ['index'],
+            additionalProperties: false,
+        },
+        handler: (args, ctx) => call(ctx, 'setSiblingIndex', { ...ref(args), index: (0, types_js_1.optionalNumber)(args, 'index') }),
+    },
+    {
+        name: 'node_create_tree',
+        description: 'Create a whole subtree in one call. `tree` is {name, position, rotation, scale, active, components: [classNames], children: [same shape]}. Created under a parent (default: scene root).',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                tree: { type: 'object', description: 'Root spec of the subtree.' },
+                parentUuid: { type: 'string' },
+                parentPath: { type: 'string' },
+            },
+            required: ['tree'],
+            additionalProperties: false,
+        },
+        handler: (args, ctx) => call(ctx, 'createNodeTree', (0, types_js_1.defined)({ tree: args['tree'], parentUuid: (0, types_js_1.optionalString)(args, 'parentUuid'), parentPath: (0, types_js_1.optionalString)(args, 'parentPath') })),
+    },
+    {
         name: 'node_set_property',
-        description: 'Set any plain property on a node (e.g. layer, name) to a JSON value.',
+        description: 'Set any property on a node (e.g. layer, name) to a JSON value. Object references: {"$asset": uuid|db://url} (sub-assets like a SpriteFrame are "<imageUuid>@f9941"), {"$node": uuid|path}, {"$component": {"node": uuid|path, "type": "cc.Sprite"}} — also inside arrays.',
         inputSchema: {
             type: 'object',
             properties: { ...REF_PROPS, property: { type: 'string' }, value: { description: 'JSON value.' } },

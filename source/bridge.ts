@@ -22,6 +22,14 @@ export interface Bridge {
   request(pkg: string, message: string, ...args: unknown[]): Promise<unknown>
   /** Runs one method of this extension's scene script in the engine runtime (see `source/scene.ts`). */
   scene(method: string, args?: unknown[]): Promise<unknown>
+  /** Uuids of the nodes selected in the editor (`Editor.Selection`). */
+  selection(): string[]
+  /** Replace the node selection. */
+  select(uuids: string[]): void
+  /** Read a project profile value (`Editor.Profile.getProject`). */
+  getProjectSetting(pkg: string, key: string): Promise<unknown>
+  /** Write a project profile value (`Editor.Profile.setProject`). */
+  setProjectSetting(pkg: string, key: string, value: unknown): Promise<void>
   /** Absolute path of the opened project. */
   projectPath(): string
   /** Cocos Creator version, e.g. `3.8.8`. */
@@ -36,6 +44,11 @@ interface EditorGlobal {
     request(pkg: string, message: string, ...args: unknown[]): Promise<unknown>
   }
   Project: { path: string }
+  Selection: { getSelected(type: string): string[]; clear(type: string): void; select(type: string, uuids: string[]): void }
+  Profile: {
+    getProject(pkg: string, key: string): Promise<unknown>
+    setProject(pkg: string, key: string, value: unknown): Promise<void>
+  }
   App: { version: string }
 }
 
@@ -55,6 +68,13 @@ export const createBridge = (): Bridge => {
         // Creator spreads `args` into the method call; scene.ts methods take the whole list as one parameter.
         args: [args],
       }),
+    selection: () => editor.Selection.getSelected('node'),
+    select: (uuids) => {
+      editor.Selection.clear('node')
+      if (uuids.length > 0) editor.Selection.select('node', uuids)
+    },
+    getProjectSetting: (pkg, key) => editor.Profile.getProject(pkg, key),
+    setProjectSetting: (pkg, key, value) => editor.Profile.setProject(pkg, key, value),
     projectPath: () => editor.Project.path,
     editorVersion: () => editor.App.version,
   }

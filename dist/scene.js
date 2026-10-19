@@ -91,6 +91,63 @@ const resolveNode = (arg) => {
 };
 /** The parent named by `parentUuid`/`parentPath`, or the scene root when neither is given. */
 const resolveParent = (options) => options.parentUuid || options.parentPath ? resolveNode({ uuid: options.parentUuid, path: options.parentPath }) : scene();
+/** Load an asset by uuid or db:// url (sub-assets like `<uuid>@f9941` are plain uuids). */
+const loadAsset = async (ref) => {
+    const uuid = ref.startsWith('db://') ? (await Editor.Message.request('asset-db', 'query-uuid', ref)) : ref;
+    if (!uuid)
+        fail(`No asset found for "${ref}".`);
+    return new Promise((resolve, reject) => {
+        cc().assetManager.loadAny({ uuid }, (err, asset) => (err ? reject(err) : resolve(asset)));
+    });
+};
+const refNode = (ref) => {
+    try {
+        return resolveNode({ uuid: ref });
+    }
+    catch {
+        return resolveNode({ path: ref });
+    }
+};
+/**
+ * JSON can't carry engine objects, so a property value may name one:
+ * `{"$asset": uuid|db://url}`, `{"$node": uuid|path}`, `{"$component": {"node": uuid|path, "type": "cc.Sprite"}}`.
+ * Resolved recursively through arrays; anything else passes through.
+ */
+const resolveRefs = async (value) => {
+    if (Array.isArray(value))
+        return Promise.all(value.map(resolveRefs));
+    if (value && typeof value === 'object') {
+        if (typeof value.$asset === 'string')
+            return loadAsset(value.$asset);
+        if (typeof value.$node === 'string')
+            return refNode(value.$node);
+        if (value.$component && typeof value.$component === 'object') {
+            return findComponent(refNode(String(value.$component.node)), value.$component.type, value.$component.index);
+        }
+    }
+    return value;
+};
+/** Create a node (and, recursively, its `children`) from a plain spec. */
+const buildNode = (spec, parent) => {
+    const C = cc();
+    const node = new C.Node(spec.name || 'New Node');
+    parent.addChild(node);
+    if (spec.position)
+        node.setPosition(vec(spec.position, C.Vec3));
+    if (spec.rotation)
+        node.setRotationFromEuler(vec(spec.rotation, C.Vec3));
+    if (spec.scale)
+        node.setScale(vec(spec.scale, C.Vec3));
+    if (typeof spec.active === 'boolean')
+        node.active = spec.active;
+    for (const type of spec.components ?? []) {
+        if (!addComponentTo(node, type))
+            fail(`Unknown component type "${type}".`);
+    }
+    for (const child of spec.children ?? [])
+        buildNode(child, node);
+    return node;
+};
 const vec = (value, Ctor) => {
     if (value === undefined || value === null)
         return undefined;
@@ -190,21 +247,21 @@ exports.methods = {
     },
     createNode(args = []) {
         const [options = {}] = args;
-        const C = cc();
-        const node = new C.Node(options.name || 'New Node');
-        const parent = resolveParent(options);
-        parent.addChild(node);
-        if (options.position)
-            node.setPosition(vec(options.position, C.Vec3));
-        if (options.rotation)
-            node.setRotationFromEuler(vec(options.rotation, C.Vec3));
-        if (options.scale)
-            node.setScale(vec(options.scale, C.Vec3));
-        for (const type of options.components ?? []) {
-            const done = addComponentTo(node, type);
-            if (!done)
-                fail(`Unknown component type "${type}".`);
-        }
+        return nodeDump(buildNode(options, resolveParent(options)));
+    },
+    /** Create a whole subtree in one call: `{name, components, position, children: [...]}` under a parent. */
+    createNodeTree(args = []) {
+        const [options = {}] = args;
+        if (!options.tree || typeof options.tree !== 'object')
+            fail('Provide "tree".');
+        return tree(buildNode(options.tree, resolveParent(options)), 0, 99, true);
+    },
+    setSiblingIndex(args = []) {
+        const [options = {}] = args;
+        const node = resolveNode(options);
+        if (typeof options.index !== 'number')
+            fail('Provide a numeric "index".');
+        node.setSiblingIndex(options.index);
         return nodeDump(node);
     },
     deleteNode(args = []) {
@@ -262,12 +319,12 @@ exports.methods = {
         node.setParent(parent, options.keepWorldTransform === true);
         return nodeDump(node);
     },
-    setNodeProperty(args = []) {
+    async setNodeProperty(args = []) {
         const [options = {}] = args;
         const node = resolveNode(options);
         if (typeof options.property !== 'string')
             fail('Provide "property".');
-        node[options.property] = coerce(node[options.property], options.value);
+        node[options.property] = coerce(node[options.property], await resolveRefs(options.value));
         return nodeDump(node);
     },
     listComponents(args = []) {
@@ -302,13 +359,13 @@ exports.methods = {
         const component = findComponent(node, options.type, options.index);
         return { type: options.type, property: options.property, value: plain(component[options.property]) };
     },
-    setComponentProperty(args = []) {
+    async setComponentProperty(args = []) {
         const [options = {}] = args;
         const node = resolveNode(options);
         const component = findComponent(node, options.type, options.index);
         if (typeof options.property !== 'string')
             fail('Provide "property".');
-        component[options.property] = coerce(component[options.property], options.value);
+        component[options.property] = coerce(component[options.property], await resolveRefs(options.value));
         return { type: options.type, property: options.property, value: plain(component[options.property]) };
     },
     async callComponentMethod(args = []) {
@@ -338,9 +395,7 @@ exports.methods = {
         if (typeof options.uuid !== 'string')
             fail('Provide the prefab asset "uuid".');
         const C = cc();
-        const prefab = await new Promise((resolve, reject) => {
-            C.assetManager.loadAny({ uuid: options.uuid }, (err, asset) => err ? reject(err) : resolve(asset));
-        });
+        const prefab = await loadAsset(options.uuid);
         const node = C.instantiate(prefab);
         const parent = resolveParent(options);
         parent.addChild(node);

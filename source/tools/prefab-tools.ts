@@ -9,6 +9,30 @@ import { defined, optionalArray, optionalString, requireString, ToolInputError }
 
 const VEC3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: '[x, y, z]' }
 
+/** A tool that sends one `scene` message with the uuid of a prefab-instance node. */
+const prefabNodeTool = (name: string, description: string, message: string): ToolDef => ({
+  name,
+  description,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      uuid: { type: 'string', description: 'Node uuid of the prefab instance.' },
+      path: { type: 'string', description: 'Node path (used when uuid is absent).' },
+    },
+    additionalProperties: false,
+  },
+  handler: async (args, ctx) => {
+    let uuid = optionalString(args, 'uuid')
+    if (!uuid) {
+      const path = optionalString(args, 'path')
+      if (!path) throw new ToolInputError('Provide "uuid" or "path".')
+      uuid = ((await ctx.bridge.scene('getNode', [{ path }])) as { uuid: string }).uuid
+    }
+    await ctx.bridge.request('scene', message, uuid)
+    return { ok: true, uuid }
+  },
+})
+
 export const prefabTools: ToolDef[] = [
   {
     name: 'prefab_list',
@@ -83,4 +107,7 @@ export const prefabTools: ToolDef[] = [
       return { created: requireString(args, 'url'), nodeUuid }
     },
   },
+  prefabNodeTool('prefab_apply', "Apply a prefab instance's changes back to its prefab asset.", 'apply-prefab'),
+  prefabNodeTool('prefab_revert', "Discard a prefab instance's overrides and restore it from the prefab asset.", 'restore-prefab'),
+  prefabNodeTool('prefab_unlink', 'Detach a node from its prefab (it becomes a plain node).', 'unlink-prefab'),
 ]

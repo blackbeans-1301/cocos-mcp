@@ -72,7 +72,7 @@ export const componentTools: ToolDef[] = [
   {
     name: 'component_set_property',
     description:
-      'Set one property of a component. Engine value types are built from JSON: Vec3/Vec2/Quat from [x,y,z]/… or {x,y,z}; Color from "#rrggbb" or [r,g,b,a]; Size from [w,h].',
+      'Set one property of a component. Engine value types are built from JSON: Vec3/Vec2/Quat from [x,y,z]/… or {x,y,z}; Color from "#rrggbb" or [r,g,b,a]; Size from [w,h]. Object references: {\"$asset\": uuid|db://url} (sub-assets like a SpriteFrame are \"<imageUuid>@f9941\"), {\"$node\": uuid|path}, {\"$component\": {\"node\": uuid|path, \"type\": \"cc.Sprite\"}} — also inside arrays.',
     inputSchema: {
       type: 'object',
       properties: { ...TARGET, property: { type: 'string' }, value: { description: 'JSON value.' } },

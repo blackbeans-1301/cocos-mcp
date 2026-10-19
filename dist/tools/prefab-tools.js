@@ -4,6 +4,30 @@ exports.prefabTools = void 0;
 const asset_tools_js_1 = require("./asset-tools.js");
 const types_js_1 = require("./types.js");
 const VEC3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: '[x, y, z]' };
+/** A tool that sends one `scene` message with the uuid of a prefab-instance node. */
+const prefabNodeTool = (name, description, message) => ({
+    name,
+    description,
+    inputSchema: {
+        type: 'object',
+        properties: {
+            uuid: { type: 'string', description: 'Node uuid of the prefab instance.' },
+            path: { type: 'string', description: 'Node path (used when uuid is absent).' },
+        },
+        additionalProperties: false,
+    },
+    handler: async (args, ctx) => {
+        let uuid = (0, types_js_1.optionalString)(args, 'uuid');
+        if (!uuid) {
+            const path = (0, types_js_1.optionalString)(args, 'path');
+            if (!path)
+                throw new types_js_1.ToolInputError('Provide "uuid" or "path".');
+            uuid = (await ctx.bridge.scene('getNode', [{ path }])).uuid;
+        }
+        await ctx.bridge.request('scene', message, uuid);
+        return { ok: true, uuid };
+    },
+});
 exports.prefabTools = [
     {
         name: 'prefab_list',
@@ -79,5 +103,8 @@ exports.prefabTools = [
             return { created: (0, types_js_1.requireString)(args, 'url'), nodeUuid };
         },
     },
+    prefabNodeTool('prefab_apply', "Apply a prefab instance's changes back to its prefab asset.", 'apply-prefab'),
+    prefabNodeTool('prefab_revert', "Discard a prefab instance's overrides and restore it from the prefab asset.", 'restore-prefab'),
+    prefabNodeTool('prefab_unlink', 'Detach a node from its prefab (it becomes a plain node).', 'unlink-prefab'),
 ];
 //# sourceMappingURL=prefab-tools.js.map

@@ -29,6 +29,14 @@ const createBridge = () => {
             // Creator spreads `args` into the method call; scene.ts methods take the whole list as one parameter.
             args: [args],
         }),
+        selection: () => editor.Selection.getSelected('node'),
+        select: (uuids) => {
+            editor.Selection.clear('node');
+            if (uuids.length > 0)
+                editor.Selection.select('node', uuids);
+        },
+        getProjectSetting: (pkg, key) => editor.Profile.getProject(pkg, key),
+        setProjectSetting: (pkg, key, value) => editor.Profile.setProject(pkg, key, value),
         projectPath: () => editor.Project.path,
         editorVersion: () => editor.App.version,
     };

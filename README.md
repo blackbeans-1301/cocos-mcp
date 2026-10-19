@@ -16,7 +16,7 @@ AI client  ──HTTP (127.0.0.1)──►  AdsCraft MCP (in the editor)  ──
    Claude Code / Cursor                /mcp endpoint                    scene · assets · build
 ```
 
-- **40 tools** across editor, scene, node, component, prefab and asset groups.
+- **60 tools** across editor, scene, node, component, prefab, asset and script groups.
 - **Streamable HTTP** on `http://127.0.0.1:3945/mcp` — attaches to a running editor.
 - **Zero runtime dependencies** — the MCP protocol and the HTTP transport are a
   small hand-written subset, so nothing extra is bundled into the editor.
@@ -106,28 +106,36 @@ configure your coding agents, and restart the server.
 
 **Editor** — `editor_status`, `editor_project_info`, `editor_console_logs`,
 `editor_script` (run JS in the editor main process), `scene_script` (run JS in the
-engine runtime), `project_build`.
+engine runtime), `editor_console_clear`, `editor_undo`, `editor_redo`,
+`selection_get`, `selection_set`, `project_build`, `build_status`,
+`project_setting_get`, `project_setting_set` (experimental).
 
 **Scene** — `scene_info`, `scene_list`, `scene_open`, `scene_save`, `scene_create`.
 
 **Node** — `node_tree`, `node_get`, `node_find`, `node_create`, `node_delete`,
 `node_duplicate`, `node_rename`, `node_set_transform`, `node_set_parent`,
-`node_set_property`.
+`node_set_property`, `node_set_sibling_index`, `node_create_tree`.
 
 **Component** — `component_list`, `component_add`, `component_remove`,
 `component_get_property`, `component_set_property`, `component_call_method`,
 `component_types`.
 
 **Prefab** — `prefab_list`, `prefab_info`, `prefab_instantiate`,
-`prefab_create_from_node`.
+`prefab_create_from_node`, `prefab_apply`, `prefab_revert`, `prefab_unlink`.
 
 **Asset** — `asset_query`, `asset_info`, `asset_create`, `asset_save`,
-`asset_move`, `asset_delete`, `asset_reimport`, `asset_open`.
+`asset_move`, `asset_delete`, `asset_reimport`, `asset_open`, `asset_read`,
+`asset_import`, `asset_copy`, `asset_mkdir`, `asset_dependencies`.
+
+**Script** — `script_list`, `script_write` (read one with `asset_read`).
 
 Nodes and components are addressed by `uuid` (preferred) or `path`
 (scene-relative, e.g. `Canvas/Player`). Engine values are passed as JSON:
 `Vec3`/`Vec2`/`Quat` from `[x, y, z]`, `Color` from `"#rrggbb"` or `[r, g, b, a]`,
-`Size` from `[w, h]`.
+`Size` from `[w, h]`. Object references (assets, nodes, components) use
+`{"$asset": uuid|db://url}`, `{"$node": uuid|path}` and
+`{"$component": {"node": uuid|path, "type": "cc.Sprite"}}` — e.g. a SpriteFrame is
+`{"$asset": "<imageUuid>@f9941"}`.
 
 ## How it works
 
@@ -171,7 +179,7 @@ below.
 
 ## Verification
 
-The MCP protocol, HTTP transport and all 40 tool schemas run under `npm test`.
+The MCP protocol, HTTP transport and all tool schemas run under `npm test`.
 The editor-facing calls are written against the Cocos Creator 3.8 editor API and
 the engine API (`cc`), and **have not yet been exercised inside a real Creator
 3.8.8 build** by this project. When you first run it, check in this order:
