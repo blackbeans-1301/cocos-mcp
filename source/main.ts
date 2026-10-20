@@ -50,8 +50,8 @@ const validPort = (value: unknown): number | undefined => {
   return Number.isInteger(parsed) && parsed >= PORT_MIN && parsed <= PORT_MAX ? parsed : undefined
 }
 
-/** `ADSCRAFT_MCP_PORT=4000` — for cases where even the default clashes. Invalid values are ignored. */
-const envPort = (): number | undefined => validPort(process.env['ADSCRAFT_MCP_PORT'])
+/** `CCREATOR_MCP_PORT=4000` — for cases where even the default clashes. Invalid values are ignored. */
+const envPort = (): number | undefined => validPort(process.env['CCREATOR_MCP_PORT'])
 
 /** Port the user chose in the panel (remembered per project). */
 const profilePort = async (): Promise<number | undefined> =>
@@ -81,11 +81,11 @@ const status = async (): Promise<Record<string, unknown>> => {
 const start = async (): Promise<void> => {
   try {
     await startMcp(ctx, { port: await desiredPort(), serverInfo: { name: EXTENSION_NAME, version: version() } })
-    console.log(`[adscraft-mcp] listening on ${mcpStatus().url}`)
+    console.log(`[ccreator-mcp] listening on ${mcpStatus().url}`)
   } catch (err) {
     // Never let a failure here kill the extension — the panel still has to open
     // so the user can read the error and retry.
-    console.error('[adscraft-mcp] failed to start:', err)
+    console.error('[ccreator-mcp] failed to start:', err)
   }
 }
 
@@ -142,7 +142,7 @@ export const methods = {
 export const load = (): void => {
   void isEnabled()
     .then((enabled) => (enabled ? start() : undefined))
-    .catch((err: unknown) => console.error('[adscraft-mcp] load failed:', err))
+    .catch((err: unknown) => console.error('[ccreator-mcp] load failed:', err))
 }
 
 export const unload = (): void => {

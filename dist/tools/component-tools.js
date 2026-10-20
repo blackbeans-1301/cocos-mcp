@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.componentTools = void 0;
+exports.componentTools = exports.dumpProperty = void 0;
 const types_js_1 = require("./types.js");
 const ref = (args) => (0, types_js_1.defined)({
     uuid: (0, types_js_1.optionalString)(args, 'uuid'),
@@ -15,7 +15,68 @@ const TARGET = {
     type: { type: 'string', description: 'Component class name, e.g. cc.Sprite.' },
     index: { type: 'number', description: 'Index among components of the same type (default 0).' },
 };
+const isJson = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+/** One value from the editor's component dump, in the same JSON shape component_set_property accepts. */
+const dumpValue = (entry) => {
+    const value = entry['value'];
+    const extendsList = Array.isArray(entry['extends']) ? entry['extends'] : [];
+    if (isJson(value) && typeof value['uuid'] === 'string') {
+        if (entry['type'] === 'cc.Node')
+            return { $node: value['uuid'] };
+        if (extendsList.includes('cc.Asset'))
+            return { $asset: value['uuid'] };
+        if (extendsList.includes('cc.Component'))
+            return { $component: { node: value['uuid'], type: entry['type'] } };
+    }
+    return value ?? null;
+};
+/** Flatten one property of the editor's `query-component` dump (arrays hold one such entry per element). */
+const dumpProperty = (name, entry) => {
+    const isArray = entry['isArray'] === true && Array.isArray(entry['value']);
+    const enumList = Array.isArray(entry['enumList']) ? entry['enumList'] : [];
+    return {
+        name,
+        type: entry['type'],
+        // Array elements carry their own `value`/`type` but not `extends`; they inherit it from the property.
+        value: isArray
+            ? entry['value'].map((element) => dumpValue({ type: entry['type'], extends: entry['extends'], ...(isJson(element) ? element : { value: element }) }))
+            : dumpValue(entry),
+        ...(isArray ? { array: true } : {}),
+        ...(entry['readonly'] === true ? { readonly: true } : {}),
+        ...(enumList.length ? { enum: enumList.slice(0, 40).map((item) => ({ name: item['name'], value: item['value'] })) } : {}),
+        ...(typeof entry['tooltip'] === 'string' && entry['tooltip'] ? { tooltip: entry['tooltip'] } : {}),
+    };
+};
+exports.dumpProperty = dumpProperty;
 exports.componentTools = [
+    {
+        name: 'component_dump',
+        description: 'List every editable property of a component with its type, current value (in the form component_set_property accepts), enum choices and read-only flag. Use it to learn property names before setting them.',
+        inputSchema: {
+            type: 'object',
+            properties: { ...TARGET, all: { type: 'boolean', description: 'Also list hidden/internal properties (default false).' } },
+            required: ['type'],
+            additionalProperties: false,
+        },
+        handler: async (args, ctx) => {
+            const type = (0, types_js_1.requireString)(args, 'type');
+            const node = (await call(ctx, 'getNode', (0, types_js_1.defined)({ uuid: (0, types_js_1.optionalString)(args, 'uuid'), path: (0, types_js_1.optionalString)(args, 'path') })));
+            const dump = (await ctx.bridge.request('scene', 'query-node', node.uuid));
+            const matches = (dump?.__comps__ ?? []).filter((comp) => comp['type'] === type);
+            const index = (0, types_js_1.optionalNumber)(args, 'index') ?? 0;
+            const chosen = matches[index];
+            if (!chosen)
+                throw new Error(`Node "${node.path}" has no component of type "${type}"${index ? ` at index ${index}` : ''}.`);
+            const uuid = chosen['value']?.['uuid']?.['value'];
+            const component = (await ctx.bridge.request('scene', 'query-component', uuid));
+            const all = args['all'] === true;
+            const properties = Object.entries(component?.value ?? {})
+                .filter(([name, entry]) => isJson(entry) && (all || (entry['visible'] !== false && !name.startsWith('_'))))
+                .map(([name, entry]) => (0, exports.dumpProperty)(name, entry));
+            const enabled = (chosen['value']?.['enabled']?.['value'] ?? true);
+            return { node: node.path, type, index, enabled, properties };
+        },
+    },
     {
         name: 'component_list',
         description: 'List the components on a node (class name + enabled).',
@@ -58,6 +119,32 @@ exports.componentTools = [
             additionalProperties: false,
         },
         handler: (args, ctx) => call(ctx, 'getComponentProperty', { ...ref(args), property: (0, types_js_1.requireString)(args, 'property') }),
+    },
+    {
+        name: 'component_set_properties',
+        description: 'Set several properties of one component in a single call (same value forms as component_set_property). Stops at the first bad property and reports which ones were applied.',
+        inputSchema: {
+            type: 'object',
+            properties: { ...TARGET, properties: { type: 'object', description: 'Map of property name to value.' } },
+            required: ['type', 'properties'],
+            additionalProperties: false,
+        },
+        handler: async (args, ctx) => {
+            const properties = args['properties'];
+            if (!isJson(properties) || Object.keys(properties).length === 0)
+                throw new types_js_1.ToolInputError('"properties" must be a non-empty object.');
+            const applied = [];
+            for (const [property, value] of Object.entries(properties)) {
+                try {
+                    await call(ctx, 'setComponentProperty', { ...ref(args), property, value });
+                    applied.push(property);
+                }
+                catch (err) {
+                    throw new Error(`Failed on "${property}": ${err instanceof Error ? err.message : String(err)} (applied before it: ${applied.join(', ') || 'none'})`);
+                }
+            }
+            return { ok: true, applied };
+        },
     },
     {
         name: 'component_set_property',

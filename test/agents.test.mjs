@@ -19,7 +19,7 @@ test('agent specs are well-formed and unique', () => {
 
 test('upserts into an empty mcpServers config', () => {
   const out = JSON.parse(upsertServer('', 'mcpServers', URL))
-  assert.deepEqual(out.mcpServers.adscraft, { type: 'http', url: URL })
+  assert.deepEqual(out.mcpServers["ccreator-mcp"], { type: 'http', url: URL })
 })
 
 test('preserves other servers and keys', () => {
@@ -27,13 +27,13 @@ test('preserves other servers and keys', () => {
   const out = JSON.parse(upsertServer(original, 'mcpServers', URL))
   assert.equal(out.theme, 'dark')
   assert.deepEqual(out.mcpServers.other, { command: 'x' })
-  assert.deepEqual(out.mcpServers.adscraft, { type: 'http', url: URL })
+  assert.deepEqual(out.mcpServers["ccreator-mcp"], { type: 'http', url: URL })
 })
 
 test('updates the url in place', () => {
   const first = upsertServer('', 'mcpServers', URL)
   const second = JSON.parse(upsertServer(first, 'mcpServers', 'http://127.0.0.1:4000/mcp'))
-  assert.equal(second.mcpServers.adscraft.url, 'http://127.0.0.1:4000/mcp')
+  assert.equal(second.mcpServers["ccreator-mcp"].url, 'http://127.0.0.1:4000/mcp')
 })
 
 test('refuses invalid JSON instead of clobbering it', () => {
@@ -41,8 +41,8 @@ test('refuses invalid JSON instead of clobbering it', () => {
 })
 
 test('VS Code uses a "servers" bucket, OpenCode uses "mcp"', () => {
-  assert.ok(JSON.parse(upsertServer('', 'vscode', URL)).servers.adscraft)
-  assert.deepEqual(JSON.parse(upsertServer('', 'opencode', URL)).mcp.adscraft, {
+  assert.ok(JSON.parse(upsertServer('', 'vscode', URL)).servers["ccreator-mcp"])
+  assert.deepEqual(JSON.parse(upsertServer('', 'opencode', URL)).mcp["ccreator-mcp"], {
     type: 'remote',
     url: URL,
     enabled: true,
@@ -52,12 +52,12 @@ test('VS Code uses a "servers" bucket, OpenCode uses "mcp"', () => {
 test('TOML: adds a block, updates it, and removes it without touching other tables', () => {
   const start = 'model = "gpt-5"\n'
   const added = upsertServer(start, 'toml', URL)
-  assert.match(added, /\[mcp_servers\.adscraft\]\nurl = "http:\/\/127\.0\.0\.1:3945\/mcp"/)
+  assert.match(added, /\[mcp_servers.ccreator-mcp\]\nurl = "http:\/\/127\.0\.0\.1:3945\/mcp"/)
   assert.match(added, /model = "gpt-5"/)
   assert.ok(hasServer(added, 'toml'))
 
   const updated = upsertServer(added, 'toml', 'http://127.0.0.1:4000/mcp')
-  assert.equal(updated.match(/\[mcp_servers\.adscraft\]/g).length, 1)
+  assert.equal(updated.match(/\[mcp_servers.ccreator-mcp\]/g).length, 1)
   assert.match(updated, /4000/)
 
   const removed = removeServer(updated, 'toml')

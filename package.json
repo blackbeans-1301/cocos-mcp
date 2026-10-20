@@ -1,10 +1,14 @@
 {
-  "name": "ads-craft-mcp",
+  "name": "ccreator-mcp",
   "version": "0.1.0",
   "package_version": 2,
-  "description": "AdsCraft MCP — let AI assistants drive Cocos Creator 3.8.8 (scenes, nodes, components, prefabs, assets) over the Model Context Protocol.",
+  "description": "ccreator-mcp (by AdsCraft team) — let AI assistants drive Cocos Creator 3.8.8 (scenes, nodes, components, prefabs, assets) over the Model Context Protocol.",
   "author": "AdsCraft team",
   "license": "MIT",
+  "homepage": "https://github.com/blackbeans-1301/cocos-mcp#readme",
+  "repository": { "type": "git", "url": "git+ssh://git@github.com/blackbeans-1301/cocos-mcp.git" },
+  "bugs": { "url": "https://github.com/blackbeans-1301/cocos-mcp/issues" },
+  "keywords": ["cocos-creator", "mcp", "model-context-protocol", "ai", "extension"],
   "private": true,
   "type": "commonjs",
   "main": "./dist/main.js",
@@ -17,7 +21,7 @@
   },
   "panels": {
     "main": {
-      "title": "AdsCraft MCP",
+      "title": "ccreator-mcp",
       "main": "./dist/panel/index.js",
       "type": "simple",
       "size": {
@@ -32,7 +36,7 @@
     "menu": [
       {
         "path": "Extension",
-        "label": "AdsCraft MCP",
+        "label": "ccreator-mcp",
         "message": "open-panel"
       }
     ],

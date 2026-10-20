@@ -214,6 +214,21 @@ const findComponent = (node, type, index) => {
         fail(`Node "${node.name}" has no component of type "${type}"${index === undefined ? '' : ` at index ${index}`}.`);
     return chosen;
 };
+/** Declared (serialized) property names — `__props__` also lists ones still `undefined` on the instance. */
+const declaredProps = (target) => target?.constructor?.__props__ ?? [];
+/**
+ * Refuse a property the target does not have: assigning an unknown name would silently create it
+ * and a typo would "succeed". The hint lists close matches so the caller can correct itself.
+ */
+const assertProperty = (target, property, label, hint = 'Use component_dump to list its properties.') => {
+    if (property in target || declaredProps(target).includes(property))
+        return;
+    const needle = property.toLowerCase();
+    const close = declaredProps(target)
+        .filter((name) => !name.startsWith('_') && (name.toLowerCase().includes(needle) || needle.includes(name.toLowerCase())))
+        .slice(0, 8);
+    fail(`${label} has no property "${property}".${close.length ? ` Did you mean: ${close.join(', ')}?` : ` ${hint}`}`);
+};
 // ---------------------------------------------------------------------------
 // Methods callable from the editor
 // ---------------------------------------------------------------------------
@@ -228,7 +243,8 @@ exports.methods = {
         const [options = {}] = args;
         const maxDepth = typeof options.maxDepth === 'number' ? options.maxDepth : 6;
         const includeComponents = options.includeComponents !== false;
-        return tree(scene(), 0, maxDepth, includeComponents);
+        const root = options.uuid || options.path ? resolveNode(options) : scene();
+        return tree(root, 0, maxDepth, includeComponents);
     },
     findNodes(args = []) {
         const [query = {}] = args;
@@ -255,6 +271,14 @@ exports.methods = {
         if (!options.tree || typeof options.tree !== 'object')
             fail('Provide "tree".');
         return tree(buildNode(options.tree, resolveParent(options)), 0, 99, true);
+    },
+    /** Prefab link of a node: the prefab asset and the root of the instance it belongs to. */
+    getPrefabInfo(args = []) {
+        const node = resolveNode(args[0] ?? {});
+        const link = node._prefab;
+        if (!link?.asset)
+            fail(`Node "${node.name}" is not part of a prefab instance.`);
+        return { assetUuid: link.asset._uuid || link.asset.uuid, rootUuid: uuidOf(link.root ?? node) };
     },
     setSiblingIndex(args = []) {
         const [options = {}] = args;
@@ -324,6 +348,7 @@ exports.methods = {
         const node = resolveNode(options);
         if (typeof options.property !== 'string')
             fail('Provide "property".');
+        assertProperty(node, options.property, `Node "${node.name}"`, 'Node properties are name, active, layer, mobility, … — see node_get; component properties are set with component_set_property.');
         node[options.property] = coerce(node[options.property], await resolveRefs(options.value));
         return nodeDump(node);
     },
@@ -357,6 +382,9 @@ exports.methods = {
         const [options = {}] = args;
         const node = resolveNode(options);
         const component = findComponent(node, options.type, options.index);
+        if (typeof options.property !== 'string')
+            fail('Provide "property".');
+        assertProperty(component, options.property, `Component "${options.type}"`);
         return { type: options.type, property: options.property, value: plain(component[options.property]) };
     },
     async setComponentProperty(args = []) {
@@ -365,6 +393,7 @@ exports.methods = {
         const component = findComponent(node, options.type, options.index);
         if (typeof options.property !== 'string')
             fail('Provide "property".');
+        assertProperty(component, options.property, `Component "${options.type}"`);
         component[options.property] = coerce(component[options.property], await resolveRefs(options.value));
         return { type: options.type, property: options.property, value: plain(component[options.property]) };
     },
@@ -423,7 +452,7 @@ const addComponentTo = (node, type) => {
     return true;
 };
 /** Convert an engine value to JSON-safe data (Vec3/Color/… → plain objects). */
-const plain = (value) => {
+const plain = (value, depth = 0) => {
     const C = cc();
     if (value === null || value === undefined)
         return value;
@@ -437,14 +466,22 @@ const plain = (value) => {
         return { r: value.r, g: value.g, b: value.b, a: value.a };
     if (value instanceof C.Size)
         return { width: value.width, height: value.height };
+    // Engine objects link to each other (SpriteFrame -> Texture2D -> ...), so they are returned as references, never walked.
     if (value instanceof C.Node)
-        return nodeDump(value);
+        return nodeDump(value, false);
+    if (value instanceof C.Component) {
+        return { $component: { node: uuidOf(value.node), type: C.js.getClassName(value) } };
+    }
+    if (value instanceof C.Asset)
+        return { $asset: value._uuid || value.uuid, name: value.name, type: C.js.getClassName(value) };
+    if (depth > 6)
+        return String(value);
     if (Array.isArray(value))
-        return value.map(plain);
+        return value.map((inner) => plain(inner, depth + 1));
     if (typeof value === 'object') {
         const out = {};
         for (const [key, inner] of Object.entries(value))
-            out[key] = plain(inner);
+            out[key] = plain(inner, depth + 1);
         return out;
     }
     return value;

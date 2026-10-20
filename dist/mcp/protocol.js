@@ -25,7 +25,7 @@ const negotiateProtocolVersion = (params) => {
         ? requested
         : exports.LATEST_PROTOCOL_VERSION;
 };
-const INSTRUCTIONS = 'AdsCraft MCP drives the open Cocos Creator project. Start with `editor_status` and `scene_info` ' +
+const INSTRUCTIONS = 'ccreator-mcp drives the open Cocos Creator project. Start with `editor_status` and `scene_info` ' +
     'to see what is open, `node_tree` to read the hierarchy, then use the node/component/prefab/asset tools. ' +
     '`scene_script` and `editor_script` are escape hatches that run arbitrary JavaScript inside the engine ' +
     'and the editor respectively — prefer the typed tools, they validate input and are safer.';

@@ -4,21 +4,22 @@
  *
  * Creator calls `ready()` when the panel opens; `beforeClose()` when it closes.
  * Everything the panel shows comes from the main process over
- * `Editor.Message.request('ads-craft-mcp', 'mcp-status' | 'mcp-set-enabled' |
+ * `Editor.Message.request('ccreator-mcp', 'mcp-status' | 'mcp-set-enabled' |
  * 'mcp-restart')`.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.style = exports.template = void 0;
 exports.ready = ready;
 exports.beforeClose = beforeClose;
-const EXTENSION = 'ads-craft-mcp';
+exports.close = close;
+const EXTENSION = 'ccreator-mcp';
 exports.template = `
 <div class="mcp-root">
   <header class="mcp-header">
     <div class="mcp-brand">
       <span class="mcp-dot" id="dot"></span>
       <div>
-        <h1>AdsCraft MCP</h1>
+        <h1>ccreator-mcp</h1>
         <p id="subtitle">Drive Cocos Creator from AI assistants</p>
       </div>
     </div>
@@ -80,8 +81,12 @@ exports.template = `
 </div>
 `;
 exports.style = `
+:host { display: block; height: 100%; }
+/* The panel is exactly as tall as its window: the content scrolls inside it instead of being cut off. */
 .mcp-root { display: flex; flex-direction: column; gap: 14px; padding: 18px; color: #e6e8ef;
-  background: #14161c; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100%; }
+  background: #14161c; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-sizing: border-box; height: 100%; overflow-y: auto; overflow-x: hidden; }
+.mcp-root > * { flex-shrink: 0; }
 .mcp-header { display: flex; align-items: center; justify-content: space-between; }
 .mcp-brand { display: flex; align-items: center; gap: 10px; }
 .mcp-brand h1 { margin: 0; font-size: 16px; font-weight: 700; }
@@ -120,8 +125,39 @@ exports.style = `
   font-size: 12px; color: #9aa3b2; }
 .mcp-footer a { color: #7ea2ff; text-decoration: none; }
 `;
-const $ = (id) => document.getElementById(id);
-function ready() {
+/**
+ * Creator renders a panel's template inside a shadow root, so `document.getElementById` never
+ * finds anything — every lookup must go through the panel's own root, set in `ready()`.
+ */
+let root = document;
+const $ = (id) => root.querySelector(`#${id}`);
+/** Focused element inside the panel (`document.activeElement` is only the panel host from outside). */
+const focused = () => root.activeElement ?? document.activeElement;
+let timer;
+/** The shadow root that holds our template, found by its marker class (Creator does not pass the panel as `this`). */
+const findPanelRoot = (scope = document) => {
+    const hit = scope.querySelector('.mcp-root');
+    if (hit)
+        return hit.getRootNode();
+    for (const element of Array.from(scope.querySelectorAll('*'))) {
+        if (element.shadowRoot) {
+            const found = findPanelRoot(element.shadowRoot);
+            if (found)
+                return found;
+        }
+    }
+    return null;
+};
+function ready(attempt = 0) {
+    const own = this && this.shadowRoot;
+    const found = own && own.querySelector('.mcp-root') ? own : findPanelRoot();
+    if (!found) {
+        // The template is attached right after `ready` on some builds; wait for it instead of binding to nothing.
+        if (attempt < 30)
+            window.setTimeout(() => ready.call(undefined, attempt + 1), 100);
+        return;
+    }
+    root = found;
     void refresh();
     $('enabled')?.addEventListener('change', (event) => {
         const checked = event.target.checked;
@@ -132,9 +168,17 @@ function ready() {
     $('save-port')?.addEventListener('click', () => void savePort());
     $('configure-all')?.addEventListener('click', () => void configureAll());
     void loadAgents();
+    // The server can start, stop or fail on its own; keep the status current while the panel is open.
+    window.clearInterval(timer);
+    timer = window.setInterval(() => void refresh(), 2000);
 }
 function beforeClose() {
-    // The server lives in the main process and must outlive the panel; nothing to do.
+    // The server lives in the main process and must outlive the panel; only the polling stops.
+    window.clearInterval(timer);
+    timer = undefined;
+}
+function close() {
+    beforeClose();
 }
 const message = globalThis.Editor.Message;
 const current = () => message.request(EXTENSION, 'mcp-status');
@@ -246,19 +290,23 @@ const refreshConfiguredAgents = async () => {
 const copyConfig = async () => {
     const status = await current();
     const url = status.url || `http://127.0.0.1:${status.port}/mcp`;
-    const config = JSON.stringify({ mcpServers: { adscraft: { type: 'http', url } } }, null, 2);
+    const config = JSON.stringify({ mcpServers: { 'ccreator-mcp': { type: 'http', url } } }, null, 2);
+    const label = $('copied');
     try {
-        await navigator.clipboard.writeText(config);
-        const note = $('copied');
-        if (note) {
-            note.textContent = 'Copied';
-            window.setTimeout(() => (note.textContent = ''), 1500);
+        // Electron's clipboard always works in a panel; the web API needs document focus and can be refused.
+        const electron = globalThis.require?.('electron');
+        if (electron?.clipboard)
+            electron.clipboard.writeText(config);
+        else
+            await navigator.clipboard.writeText(config);
+        if (label) {
+            label.textContent = 'Copied';
+            window.setTimeout(() => (label.textContent = ''), 1500);
         }
     }
     catch {
-        const note = $('copied');
-        if (note)
-            note.textContent = config;
+        if (label)
+            label.textContent = config;
     }
 };
 const refresh = async () => {
@@ -266,7 +314,16 @@ const refresh = async () => {
     try {
         status = await current();
     }
-    catch {
+    catch (err) {
+        // Say so instead of leaving "—" everywhere: this is the first thing to check when the panel looks dead.
+        const state = $('state');
+        if (state)
+            state.textContent = 'Unreachable';
+        const error = $('error');
+        if (error) {
+            error.textContent = `Cannot reach the ${EXTENSION} extension: ${err instanceof Error ? err.message : String(err)}`;
+            error.classList.add('err');
+        }
         return;
     }
     const dot = $('dot');
@@ -291,7 +348,7 @@ const refresh = async () => {
         enabled.checked = status.enabled;
     const port = $('port');
     // Don't clobber a value the user is currently typing.
-    if (port && document.activeElement !== port)
+    if (port && focused() !== port)
         port.value = String(status.configuredPort);
     const editor = $('editor');
     if (editor)

@@ -19,7 +19,12 @@ const agentStates = (ctx) => agents_js_1.AGENTS.map((spec) => {
     let error = '';
     if ((0, node_fs_1.existsSync)(file)) {
         try {
-            configured = (0, agents_js_1.hasServer)((0, node_fs_1.readFileSync)(file, 'utf8'), spec.kind);
+            const text = (0, node_fs_1.readFileSync)(file, 'utf8');
+            configured = (0, agents_js_1.hasServer)(text, spec.kind);
+            // `hasServer` treats an unparsable file as "not configured"; a dry-run upsert (nothing is written)
+            // surfaces the real problem so the panel can show it instead of offering a button that will fail.
+            if (!configured && text.trim() !== '')
+                (0, agents_js_1.upsertServer)(text, spec.kind, ctx.url);
         }
         catch (err) {
             error = err instanceof Error ? err.message : String(err);

@@ -9,12 +9,12 @@
  * Safety rules, to keep this from wrecking a user's config:
  * - **Merge, never replace.** Other servers in the file are preserved.
  * - **Refuse invalid JSON** rather than "fixing" it.
- * - Only ever touch our own `adscraft` entry.
+ * - Only ever touch our own `ccreator-mcp` entry.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.hasServer = exports.removeServer = exports.upsertServer = exports.AGENTS = exports.SERVER_TITLE = exports.SERVER_NAME = void 0;
-exports.SERVER_NAME = 'adscraft';
-exports.SERVER_TITLE = 'AdsCraft MCP';
+exports.SERVER_NAME = 'ccreator-mcp';
+exports.SERVER_TITLE = 'ccreator-mcp';
 exports.AGENTS = [
     {
         id: 'cursor',

@@ -12,16 +12,20 @@ const REF_PROPS = {
 exports.nodeTools = [
     {
         name: 'node_tree',
-        description: 'Read the scene hierarchy as a tree (name, path, transform, components).',
+        description: 'Read the scene hierarchy as a tree (name, path, transform, components). Pass uuid or path to read just one subtree.',
         inputSchema: {
             type: 'object',
             properties: {
+                ...REF_PROPS,
                 maxDepth: { type: 'number', description: 'How deep to descend (default 6).' },
                 includeComponents: { type: 'boolean', description: 'Include component class names (default true).' },
             },
             additionalProperties: false,
         },
-        handler: (args, ctx) => call(ctx, 'nodeTree', (0, types_js_1.defined)({ maxDepth: (0, types_js_1.optionalNumber)(args, 'maxDepth'), includeComponents: (0, types_js_1.optionalBoolean)(args, 'includeComponents') })),
+        handler: (args, ctx) => call(ctx, 'nodeTree', {
+            ...ref(args),
+            ...(0, types_js_1.defined)({ maxDepth: (0, types_js_1.optionalNumber)(args, 'maxDepth'), includeComponents: (0, types_js_1.optionalBoolean)(args, 'includeComponents') }),
+        }),
     },
     {
         name: 'node_get',

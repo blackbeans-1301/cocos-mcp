@@ -8,11 +8,11 @@
  * Safety rules, to keep this from wrecking a user's config:
  * - **Merge, never replace.** Other servers in the file are preserved.
  * - **Refuse invalid JSON** rather than "fixing" it.
- * - Only ever touch our own `adscraft` entry.
+ * - Only ever touch our own `ccreator-mcp` entry.
  */
 
-export const SERVER_NAME = 'adscraft'
-export const SERVER_TITLE = 'AdsCraft MCP'
+export const SERVER_NAME = 'ccreator-mcp'
+export const SERVER_TITLE = 'ccreator-mcp'
 
 export type ConfigKind = 'mcpServers' | 'vscode' | 'opencode' | 'toml'
 

@@ -36,8 +36,8 @@ const validPort = (value) => {
     const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
     return Number.isInteger(parsed) && parsed >= PORT_MIN && parsed <= PORT_MAX ? parsed : undefined;
 };
-/** `ADSCRAFT_MCP_PORT=4000` — for cases where even the default clashes. Invalid values are ignored. */
-const envPort = () => validPort(process.env['ADSCRAFT_MCP_PORT']);
+/** `CCREATOR_MCP_PORT=4000` — for cases where even the default clashes. Invalid values are ignored. */
+const envPort = () => validPort(process.env['CCREATOR_MCP_PORT']);
 /** Port the user chose in the panel (remembered per project). */
 const profilePort = async () => validPort(await editor().Profile.getProject(bridge_js_1.EXTENSION_NAME, PROFILE_PORT_KEY));
 /** Precedence: panel setting → environment variable → default. */
@@ -60,12 +60,12 @@ const status = async () => {
 const start = async () => {
     try {
         await (0, session_js_1.startMcp)(ctx, { port: await desiredPort(), serverInfo: { name: bridge_js_1.EXTENSION_NAME, version: version() } });
-        console.log(`[adscraft-mcp] listening on ${(0, session_js_1.mcpStatus)().url}`);
+        console.log(`[ccreator-mcp] listening on ${(0, session_js_1.mcpStatus)().url}`);
     }
     catch (err) {
         // Never let a failure here kill the extension — the panel still has to open
         // so the user can read the error and retry.
-        console.error('[adscraft-mcp] failed to start:', err);
+        console.error('[ccreator-mcp] failed to start:', err);
     }
 };
 /** Where the coding-agent installer reads/writes: the user's home and the open project. */
@@ -114,7 +114,7 @@ exports.methods = {
 const load = () => {
     void isEnabled()
         .then((enabled) => (enabled ? start() : undefined))
-        .catch((err) => console.error('[adscraft-mcp] load failed:', err));
+        .catch((err) => console.error('[ccreator-mcp] load failed:', err));
 };
 exports.load = load;
 const unload = () => {

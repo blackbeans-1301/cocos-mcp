@@ -34,10 +34,14 @@ export interface Bridge {
   projectPath(): string
   /** Cocos Creator version, e.g. `3.8.8`. */
   editorVersion(): string
+  /** Install folder of the editor (`Editor.App.path`) — where its bundled `node_modules` live. */
+  appPath(): string
+  /** Capture the Scene view as a PNG. */
+  capture(): Promise<{ width: number; height: number; png: Uint8Array }>
 }
 
 /** Extension package name — must match `contributions.scene.script`'s owner (`package.json` `name`). */
-export const EXTENSION_NAME = 'ads-craft-mcp'
+export const EXTENSION_NAME = 'ccreator-mcp'
 
 interface EditorGlobal {
   Message: {
@@ -49,7 +53,14 @@ interface EditorGlobal {
     getProject(pkg: string, key: string): Promise<unknown>
     setProject(pkg: string, key: string, value: unknown): Promise<void>
   }
-  App: { version: string }
+  App: { version: string; path: string }
+}
+
+/** The subset of Electron's `webContents` the Scene-view capture uses. */
+interface WebContentsLike {
+  getTitle(): string
+  getURL(): string
+  capturePage(): Promise<{ getSize(): { width: number; height: number }; toPNG(): Uint8Array }>
 }
 
 /**
@@ -57,17 +68,64 @@ interface EditorGlobal {
  * not an import — importing it would break `node --test`, which runs outside the
  * editor and never builds one.
  */
+/** Scene-script methods that only read; every other one changes the scene and must leave an undo step. */
+const READ_ONLY = new Set(['sceneInfo', 'nodeTree', 'findNodes', 'getNode', 'listComponents', 'getComponentProperty', 'listComponentTypes', 'getPrefabInfo'])
+
 export const createBridge = (): Bridge => {
   const editor = (globalThis as unknown as { Editor: EditorGlobal }).Editor
   return {
     request: (pkg, message, ...args) => editor.Message.request(pkg, message, ...args),
-    scene: (method, args = []) =>
-      editor.Message.request('scene', 'execute-scene-script', {
-        name: EXTENSION_NAME,
-        method,
-        // Creator spreads `args` into the method call; scene.ts methods take the whole list as one parameter.
-        args: [args],
-      }),
+    scene: async (method, args = []) => {
+      const call = (name: string, list: unknown[]): Promise<unknown> =>
+        editor.Message.request('scene', 'execute-scene-script', {
+          name: EXTENSION_NAME,
+          method: name,
+          // Creator spreads `args` into the method call; scene.ts methods take the whole list as one parameter.
+          args: [list],
+        })
+      const run = (): Promise<unknown> => call(method, args)
+      if (READ_ONLY.has(method)) return run()
+      // Direct engine edits bypass the editor's undo stack. Wrapping the call in the editor's own recording
+      // (what its panels do) makes `undo` revert it. A recording only tracks the nodes it is given, not their
+      // descendants, so give it every node the edit names plus that node's parent (covers create/delete/reparent).
+      // A bare `snapshot` is the fallback: it adds no undo step for property edits.
+      const request = (message: string, ...rest: unknown[]): Promise<unknown> => editor.Message.request('scene', message, ...rest)
+      const affected = async (): Promise<string[]> => {
+        const spec = (args[0] ?? {}) as Record<string, unknown>
+        const refs = [
+          { uuid: spec['uuid'], path: spec['path'] },
+          { uuid: spec['parentUuid'], path: spec['parentPath'] },
+        ].filter((ref) => ref.uuid || ref.path)
+        const uuids = new Set<string>()
+        for (const ref of refs) {
+          const node = (await call('getNode', [ref]).catch(() => null)) as { uuid?: string; path?: string } | null
+          if (!node?.uuid) continue
+          uuids.add(node.uuid)
+          const parentPath = (node.path ?? '').split('/').slice(0, -1).join('/')
+          const parent = parentPath ? ((await call('getNode', [{ path: parentPath }]).catch(() => null)) as { uuid?: string } | null) : null
+          const parentUuid = parent?.uuid ?? ((await request('query-node-tree').catch(() => null)) as { uuid?: string } | null)?.uuid
+          if (parentUuid) uuids.add(parentUuid)
+        }
+        return [...uuids]
+      }
+      let undoId: unknown
+      try {
+        const uuids = await affected()
+        if (uuids.length > 0) undoId = await request('begin-recording', uuids)
+      } catch {
+        undoId = undefined
+      }
+      const recording = undoId !== undefined && undoId !== null
+      try {
+        const result = await run()
+        if (recording) await request('end-recording', undoId).catch(() => undefined)
+        else await request('snapshot').catch(() => undefined)
+        return result
+      } catch (err) {
+        if (recording) await request('cancel-recording', undoId).catch(() => undefined)
+        throw err
+      }
+    },
     selection: () => editor.Selection.getSelected('node'),
     select: (uuids) => {
       editor.Selection.clear('node')
@@ -77,5 +135,15 @@ export const createBridge = (): Bridge => {
     setProjectSetting: (pkg, key, value) => editor.Profile.setProject(pkg, key, value),
     projectPath: () => editor.Project.path,
     editorVersion: () => editor.App.version,
+    appPath: () => editor.App.path,
+    capture: async () => {
+      // The Scene view is a webview titled "3D Engine WebView"; `electron` only exists inside Creator.
+      const { webContents } = require('electron') as { webContents: { getAllWebContents(): WebContentsLike[] } }
+      const view = webContents.getAllWebContents().find((w) => w.getTitle() === '3D Engine WebView' || w.getURL().includes('3d-webview'))
+      if (!view) throw new Error('The Scene view is not open — open the Scene panel in the editor first.')
+      const image = await view.capturePage()
+      const { width, height } = image.getSize()
+      return { width, height, png: image.toPNG() }
+    },
   }
 }

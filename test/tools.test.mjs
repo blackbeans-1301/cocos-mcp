@@ -11,7 +11,8 @@ const fake = (replies = {}) => {
   const bridge = {
     request: async (pkg, message, ...args) => {
       calls.push({ pkg, message, args })
-      return replies[`${pkg}/${message}`] ?? { pkg, message }
+      const key = `${pkg}/${message}`
+      return key in replies ? replies[key] : { pkg, message }
     },
     scene: async (method, args) => {
       calls.push({ pkg: 'scene-script', message: method, args })
@@ -41,17 +42,30 @@ test('undo/redo go to the scene module', async () => {
   assert.deepEqual(calls.map((c) => [c.pkg, c.message]), [['scene', 'undo'], ['scene', 'redo']])
 })
 
-test('prefab_revert resolves a path to a uuid, then sends restore-prefab', async () => {
-  const { calls, ctx } = fake()
+test('prefab_revert sends restore-prefab with (instance root uuid, prefab asset uuid)', async () => {
+  const { calls, ctx } = fake({ 'scene-script/getPrefabInfo': { rootUuid: 'root-1', assetUuid: 'prefab-1' } })
   const out = await callTool('prefab_revert', { path: 'Canvas/Enemy' }, ctx)
-  assert.deepEqual(out, { result: { ok: true, uuid: 'node-1' } })
-  assert.deepEqual(calls.at(-1), { pkg: 'scene', message: 'restore-prefab', args: ['node-1'] })
+  assert.deepEqual(out, { result: { ok: true, uuid: 'root-1', prefab: 'prefab-1' } })
+  assert.deepEqual(calls.at(-1), { pkg: 'scene', message: 'restore-prefab', args: ['root-1', 'prefab-1'] })
 })
 
-test('prefab_create_from_node sends (uuid, url) positionally', async () => {
+test('prefab_apply resolves a path to a uuid, then sends apply-prefab', async () => {
   const { calls, ctx } = fake()
-  await callTool('prefab_create_from_node', { uuid: 'n1', url: 'db://assets/E.prefab' }, ctx)
-  assert.deepEqual(calls.at(-1), { pkg: 'scene', message: 'create-prefab', args: ['n1', 'db://assets/E.prefab'] })
+  await callTool('prefab_apply', { path: 'Canvas/Enemy' }, ctx)
+  assert.deepEqual(calls.at(-1), { pkg: 'scene', message: 'apply-prefab', args: ['node-1'] })
+})
+
+test('prefab_create_from_node sends (uuid, url) positionally and reports the prefab uuid', async () => {
+  const { calls, ctx } = fake({ 'asset-db/query-asset-info': { uuid: 'p1' } })
+  const out = await callTool('prefab_create_from_node', { uuid: 'n1', url: 'db://assets/E.prefab' }, ctx)
+  assert.deepEqual(calls.find((c) => c.message === 'create-prefab'), { pkg: 'scene', message: 'create-prefab', args: ['n1', 'db://assets/E.prefab'] })
+  assert.equal(out.result.prefabUuid, 'p1')
+})
+
+test('asset operations that answer null still confirm what they did', async () => {
+  const { ctx } = fake({ 'asset-db/move-asset': null, 'asset-db/reimport-asset': null })
+  assert.equal((await callTool('asset_move', { source: 'db://a', target: 'db://b' }, ctx)).result.ok, true)
+  assert.equal((await callTool('asset_reimport', { url: 'db://a' }, ctx)).result.ok, true)
 })
 
 test('asset_create sends string content and overwrite', async () => {

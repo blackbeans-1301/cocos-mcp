@@ -39,7 +39,11 @@ export const agentStates = (ctx: InstallContext): AgentState[] =>
     let error = ''
     if (existsSync(file)) {
       try {
-        configured = hasServer(readFileSync(file, 'utf8'), spec.kind)
+        const text = readFileSync(file, 'utf8')
+        configured = hasServer(text, spec.kind)
+        // `hasServer` treats an unparsable file as "not configured"; a dry-run upsert (nothing is written)
+        // surfaces the real problem so the panel can show it instead of offering a button that will fail.
+        if (!configured && text.trim() !== '') upsertServer(text, spec.kind, ctx.url)
       } catch (err) {
         error = err instanceof Error ? err.message : String(err)
       }

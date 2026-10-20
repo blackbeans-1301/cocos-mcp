@@ -4,7 +4,7 @@
  * live scene to attach the node to.
  */
 import type { ToolDef, ToolContext } from './types.js'
-import { queryAssets } from './asset-tools.js'
+import { queryAssets, requireAssetInfo } from './asset-tools.js'
 import { defined, optionalArray, optionalString, requireString, ToolInputError } from './types.js'
 
 const VEC3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: '[x, y, z]' }
@@ -27,6 +27,12 @@ const prefabNodeTool = (name: string, description: string, message: string): Too
       const path = optionalString(args, 'path')
       if (!path) throw new ToolInputError('Provide "uuid" or "path".')
       uuid = ((await ctx.bridge.scene('getNode', [{ path }])) as { uuid: string }).uuid
+    }
+    if (message === 'restore-prefab') {
+      // Reverting needs the instance root and the prefab asset: (rootUuid, assetUuid).
+      const info = (await ctx.bridge.scene('getPrefabInfo', [{ uuid }])) as { assetUuid: string; rootUuid: string }
+      await ctx.bridge.request('scene', message, info.rootUuid, info.assetUuid)
+      return { ok: true, uuid: info.rootUuid, prefab: info.assetUuid }
     }
     await ctx.bridge.request('scene', message, uuid)
     return { ok: true, uuid }
@@ -55,7 +61,7 @@ export const prefabTools: ToolDef[] = [
       const uuid = optionalString(args, 'uuid')
       const url = optionalString(args, 'url')
       if (!uuid && !url) return queryAssets(ctx, 'db://assets/**/*.prefab', 'cc.Prefab')
-      return ctx.bridge.request('asset-db', 'query-asset-info', uuid ?? url)
+      return requireAssetInfo(ctx, (uuid ?? url) as string)
     },
   },
   {
@@ -84,7 +90,7 @@ export const prefabTools: ToolDef[] = [
   },
   {
     name: 'prefab_create_from_node',
-    description: 'Create a prefab asset from a node in the open scene.',
+    description: 'Create a prefab asset from a node in the open scene. The source node becomes an instance: it is renamed after the prefab and its uuid changes.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -103,8 +109,14 @@ export const prefabTools: ToolDef[] = [
         nodeUuid = ((await ctx.bridge.scene('getNode', [{ path: nodePath }])) as { uuid: string }).uuid
       }
       // Creator's message takes (nodeUuid, url) positionally; it returns nothing useful.
-      await ctx.bridge.request('scene', 'create-prefab', nodeUuid, requireString(args, 'url'))
-      return { created: requireString(args, 'url'), nodeUuid }
+      const url = requireString(args, 'url')
+      await ctx.bridge.request('scene', 'create-prefab', nodeUuid, url)
+      const asset = (await ctx.bridge.request('asset-db', 'query-asset-info', url)) as { uuid?: string } | null
+      return {
+        created: url,
+        prefabUuid: asset?.uuid,
+        note: 'The source node is renamed after the prefab and gets a new uuid; find it again with node_find (by name) before editing it.',
+      }
     },
   },
   prefabNodeTool('prefab_apply', "Apply a prefab instance's changes back to its prefab asset.", 'apply-prefab'),

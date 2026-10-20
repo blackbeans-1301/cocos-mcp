@@ -14,7 +14,7 @@ import type { ServerInfo } from './protocol.js'
  * range — Next.js, Vercel, CRA, Rails and Grafana all default to it. `3945` is
  * obscure: no popular dev server claims it, and it is not an IANA-registered
  * port (unlike 3306/3389/3478 in this block). Override with the
- * `ADSCRAFT_MCP_PORT` environment variable when it still clashes.
+ * `CCREATOR_MCP_PORT` environment variable when it still clashes.
  */
 export const DEFAULT_MCP_PORT = 3945
 
@@ -45,7 +45,7 @@ export const startMcp = (
   if (handle) return Promise.resolve()
   if (starting) return starting
   configuredPort = options.port ?? configuredPort
-  const serverInfo = options.serverInfo ?? { name: 'ads-craft-mcp', version: '0.0.0' }
+  const serverInfo = options.serverInfo ?? { name: 'ccreator-mcp', version: '0.0.0' }
   const attempt = (async () => {
     try {
       handle = await startMcpHttp(ctx, { port: configuredPort, serverInfo })

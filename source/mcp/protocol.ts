@@ -3,7 +3,7 @@
  *
  * Hand-written rather than using `@modelcontextprotocol/sdk`: the SDK pulls in
  * `express`, `hono`, `jose`, `ajv`, … into an extension that users Import as a
- * folder, while the protocol surface AdsCraft MCP needs is a small, stable
+ * folder, while the protocol surface ccreator-mcp needs is a small, stable
  * subset. This intentionally does **not** implement server-initiated SSE
  * (no progress/sampling notifications): every request returns a single JSON
  * response, which is all the `tools/*` flow needs.
@@ -68,7 +68,7 @@ const negotiateProtocolVersion = (params: unknown): string => {
 }
 
 const INSTRUCTIONS =
-  'AdsCraft MCP drives the open Cocos Creator project. Start with `editor_status` and `scene_info` ' +
+  'ccreator-mcp drives the open Cocos Creator project. Start with `editor_status` and `scene_info` ' +
   'to see what is open, `node_tree` to read the hierarchy, then use the node/component/prefab/asset tools. ' +
   '`scene_script` and `editor_script` are escape hatches that run arbitrary JavaScript inside the engine ' +
   'and the editor respectively — prefer the typed tools, they validate input and are safer.'

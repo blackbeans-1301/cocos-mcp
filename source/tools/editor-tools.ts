@@ -6,10 +6,8 @@
  * deliberately powerful — they are how an agent does something no typed tool
  * covers yet. Prefer the typed tools: they validate input and return structure.
  */
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import type { ToolDef, ToolContext } from './types.js'
-import { ToolInputError, asObject, optionalArray, optionalBoolean, optionalNumber, optionalString, requireString } from './types.js'
+import { ToolInputError, defined, optionalArray, optionalBoolean, optionalEnum, optionalNumber, optionalString, requireString } from './types.js'
 
 /**
  * Ring buffer of main-process output — Creator 3.8.8 has no `query-console-logs` message.
@@ -21,16 +19,16 @@ import { ToolInputError, asObject, optionalArray, optionalBoolean, optionalNumbe
 const LOG_LIMIT = 500
 type LogLine = { type: string; message: string; time: string }
 // Kept on globalThis: an extension reload re-evaluates this module but the patches from the first load survive.
-const g = globalThis as unknown as { __adscraftLogHooked?: boolean; __adscraftLogBuffer?: LogLine[]; __adscraftInConsole?: boolean }
-const logBuffer: LogLine[] = (g.__adscraftLogBuffer ??= [])
+const g = globalThis as unknown as { __ccreatorLogHooked?: boolean; __ccreatorLogBuffer?: LogLine[]; __ccreatorInConsole?: boolean }
+const logBuffer: LogLine[] = (g.__ccreatorLogBuffer ??= [])
 
 const record = (type: string, message: string): void => {
   logBuffer.push({ type, message: message.replace(/\r?\n$/, ''), time: new Date().toISOString() })
   if (logBuffer.length > LOG_LIMIT) logBuffer.shift()
 }
 
-if (!g.__adscraftLogHooked) {
-  g.__adscraftLogHooked = true
+if (!g.__ccreatorLogHooked) {
+  g.__ccreatorLogHooked = true
   const fmt = (parts: unknown[]): string =>
     parts.map((p) => (typeof p === 'string' ? p : p instanceof Error ? p.stack ?? p.message : safeJson(p))).join(' ')
   const safeJson = (v: unknown): string => {
@@ -47,11 +45,11 @@ if (!g.__adscraftLogHooked) {
       const original = target[type].bind(target)
       target[type] = (...parts: unknown[]) => {
         record(type, fmt(parts))
-        g.__adscraftInConsole = true
+        g.__ccreatorInConsole = true
         try {
           original(...parts)
         } finally {
-          g.__adscraftInConsole = false
+          g.__ccreatorInConsole = false
         }
       }
     }
@@ -59,23 +57,36 @@ if (!g.__adscraftLogHooked) {
   for (const [stream, type] of [[process.stdout, 'log'], [process.stderr, 'error']] as const) {
     const original = stream.write.bind(stream) as (chunk: unknown, ...rest: unknown[]) => boolean
     ;(stream as unknown as { write: typeof original }).write = (chunk, ...rest) => {
-      if (!g.__adscraftInConsole) record(type, typeof chunk === 'string' ? chunk : Buffer.from(chunk as Uint8Array).toString('utf8'))
+      if (!g.__ccreatorInConsole) record(type, typeof chunk === 'string' ? chunk : Buffer.from(chunk as Uint8Array).toString('utf8'))
       return original(chunk, ...rest)
     }
   }
 }
 
-const normalizeConsole = (raw: unknown): Array<Record<string, unknown>> => {
-  const list = Array.isArray(raw) ? raw : []
-  return list.map((entry) => {
-    const e = asObject(entry)
-    return {
-      type: typeof e['type'] === 'string' ? e['type'] : 'log',
-      message: typeof e['message'] === 'string' ? e['message'] : String(e['message'] ?? ''),
-      ...(typeof e['time'] === 'string' ? { time: e['time'] } : {}),
-      ...(typeof e['stack'] === 'string' ? { stack: e['stack'] } : {}),
-    }
-  })
+const STACK_LINE = /^\s+at\s/
+const compact = (message: string, stack: boolean, maxChars: number): string => {
+  const text = stack ? message : message.split('\n').filter((line) => !STACK_LINE.test(line)).join('\n')
+  return maxChars > 0 && text.length > maxChars ? `${text.slice(0, maxChars)}… [${text.length - maxChars} more chars]` : text
+}
+
+export interface LogQuery {
+  limit?: number | undefined
+  type?: string | undefined
+  pattern?: string | undefined
+  stack?: boolean | undefined
+  maxChars?: number | undefined
+  /** Only lines logged within this many milliseconds. */
+  withinMs?: number | undefined
+}
+
+/** Filter the captured log buffer. Default output is compact: no stack frames, long messages cut. */
+export const searchLogs = (query: LogQuery): Array<Record<string, unknown>> => {
+  const matcher = query.pattern ? new RegExp(query.pattern, 'i') : null
+  const oldest = query.withinMs === undefined ? 0 : Date.now() - query.withinMs
+  return logBuffer
+    .filter((line) => (!query.type || line.type === query.type) && (!matcher || matcher.test(line.message)) && Date.parse(line.time) >= oldest)
+    .slice(-(query.limit ?? 100))
+    .map((line) => ({ ...line, message: compact(line.message, query.stack === true, query.maxChars ?? 800) }))
 }
 
 const escapeHatch = (name: string, description: string, run: (code: string, args: unknown, ctx: ToolContext) => Promise<unknown>): ToolDef => ({
@@ -116,15 +127,28 @@ export const editorTools: ToolDef[] = [
   },
   {
     name: 'editor_console_logs',
-    description: 'Read recent editor/console log lines (captured from the editor main process since the extension loaded).',
+    description:
+      'Read recent editor/console log lines (captured from the editor main process since the extension loaded). Compact by default: stack frames are dropped and long messages cut; filter with type/pattern.',
     inputSchema: {
       type: 'object',
-      properties: { limit: { type: 'number', description: 'Max lines to return (default 100).' } },
+      properties: {
+        limit: { type: 'number', description: 'Max lines to return (default 100).' },
+        type: { type: 'string', enum: ['log', 'info', 'warn', 'error'], description: 'Only lines of this type.' },
+        pattern: { type: 'string', description: 'Case-insensitive regular expression the message must match.' },
+        stack: { type: 'boolean', description: 'Keep stack frames (default false).' },
+        maxChars: { type: 'number', description: 'Cut messages longer than this (default 800; 0 = no limit).' },
+      },
       additionalProperties: false,
     },
-    handler: async (args, ctx) => {
-      const limit = optionalNumber(args, 'limit') ?? 100
-      return { entries: normalizeConsole(logBuffer).slice(-limit), total: logBuffer.length, note: 'Captured since the extension loaded (console + stdout/stderr of the editor main process).' }
+    handler: async (args) => {
+      const type = optionalEnum(args, 'type', ['log', 'info', 'warn', 'error'] as const)
+      let entries: Array<Record<string, unknown>>
+      try {
+        entries = searchLogs(defined({ limit: optionalNumber(args, 'limit'), type, pattern: optionalString(args, 'pattern'), stack: optionalBoolean(args, 'stack'), maxChars: optionalNumber(args, 'maxChars') }))
+      } catch (err) {
+        throw new ToolInputError(`Bad "pattern": ${err instanceof Error ? err.message : String(err)}`)
+      }
+      return { entries, total: logBuffer.length, note: 'Captured since the extension loaded (console + stdout/stderr of the editor main process).' }
     },
   },
   escapeHatch(
@@ -146,64 +170,6 @@ export const editorTools: ToolDef[] = [
       return ctx.bridge.scene('evalScript', [payload])
     },
   ),
-  {
-    name: 'project_build',
-    description: 'Start a Cocos build task (e.g. web-mobile). Build options depend on the Creator build — experimental.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        platform: { type: 'string', description: 'Build platform, e.g. web-mobile (default web-mobile).' },
-        debug: { type: 'boolean', description: 'Debug build (default false).' },
-        buildPath: { type: 'string', description: 'Output directory.' },
-        wait: { type: 'boolean', description: 'Block until <buildPath>/<platform>/index.html appears (default false).' },
-        timeoutSec: { type: 'number', description: 'With wait: give up after this many seconds (default 300).' },
-      },
-      additionalProperties: false,
-    },
-    handler: async (args, ctx) => {
-      const platform = optionalString(args, 'platform') ?? 'web-mobile'
-      const options: Record<string, unknown> = {
-        name: platform,
-        platform,
-        debug: optionalBoolean(args, 'debug') ?? false,
-      }
-      const buildPath = optionalString(args, 'buildPath')
-      if (buildPath) options['buildPath'] = buildPath
-      const task = await ctx.bridge.request('builder', 'add-task', options)
-      const outDir = join(buildPath ?? join(ctx.bridge.projectPath(), 'build'), platform)
-      if (args['wait'] !== true) {
-        return { started: true, task, outDir, hint: 'Runs in the background. Use build_status, or pass wait: true.' }
-      }
-      const deadline = Date.now() + (optionalNumber(args, 'timeoutSec') ?? 300) * 1000
-      while (Date.now() < deadline) {
-        if (existsSync(join(outDir, 'index.html'))) return { started: true, finished: true, task, outDir }
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-      }
-      return { started: true, finished: false, task, outDir, hint: 'Timed out waiting for index.html - check the editor console.' }
-    },
-  },
-  {
-    name: 'build_status',
-    description: 'State of the build tasks Creator knows about, and whether a build output folder holds index.html.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        platform: { type: 'string', description: 'Platform folder to check (default web-mobile).' },
-        buildPath: { type: 'string', description: 'Output directory (default <project>/build).' },
-      },
-      additionalProperties: false,
-    },
-    handler: async (args, ctx) => {
-      const outDir = join(optionalString(args, 'buildPath') ?? join(ctx.bridge.projectPath(), 'build'), optionalString(args, 'platform') ?? 'web-mobile')
-      let tasks: unknown = null
-      try {
-        tasks = await ctx.bridge.request('builder', 'query-tasks-info')
-      } catch (err) {
-        tasks = { error: err instanceof Error ? err.message : String(err) }
-      }
-      return { outDir, hasIndexHtml: existsSync(join(outDir, 'index.html')), tasks }
-    },
-  },
   {
     name: 'editor_console_clear',
     description: 'Empty the log buffer read by editor_console_logs (does not touch the editor console panel).',
@@ -262,6 +228,31 @@ export const editorTools: ToolDef[] = [
       additionalProperties: false,
     },
     handler: async (args, ctx) => ({ value: (await ctx.bridge.getProjectSetting(requireString(args, 'package'), requireString(args, 'key'))) ?? null }),
+  },
+  {
+    name: 'project_setting_list',
+    description:
+      'List what a project setting profile holds: the keys at `key` (default: the whole profile) with their type and a short preview, so you know which keys project_setting_get/set accept.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        package: { type: 'string', description: 'Profile name, e.g. "project".' },
+        key: { type: 'string', description: 'Dotted path to look inside, e.g. "general" (default: top level).' },
+      },
+      required: ['package'],
+      additionalProperties: false,
+    },
+    handler: async (args, ctx) => {
+      const key = optionalString(args, 'key') ?? ''
+      const value = await ctx.bridge.getProjectSetting(requireString(args, 'package'), key)
+      if (typeof value !== 'object' || value === null) return { key, type: typeof value, value: value ?? null }
+      const entries = Object.entries(value as Record<string, unknown>).map(([name, inner]) => ({
+        key: key ? `${key}.${name}` : name,
+        type: Array.isArray(inner) ? 'array' : inner === null ? 'null' : typeof inner,
+        preview: (JSON.stringify(inner) ?? '').slice(0, 80),
+      }))
+      return { key, entries }
+    },
   },
   {
     name: 'project_setting_set',
