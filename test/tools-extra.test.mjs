@@ -151,8 +151,20 @@ test('build_options_get returns the latest options for a platform; build_cancel 
   const options = ok(await callTool('build_options_get', {}, ctx))
   assert.deepEqual([options.taskId, options.options.buildPath], ['300', '/b'])
   assert.match(failed(await callTool('build_options_get', { platform: 'ios' }, ctx)), /No build task has run/)
-  assert.deepEqual(ok(await callTool('build_cancel', {}, ctx)), { ok: true, cancelled: '300' })
-  assert.deepEqual(calls.at(-1), { pkg: 'builder', message: 'break-task', args: ['300'] })
+  // The fake never changes state: a task that is still running after break-task is reported, not hidden.
+  const stuck = ok(await callTool('build_cancel', {}, ctx))
+  assert.deepEqual([stuck.ok, stuck.cancelled, stuck.state], [false, '300', 'processing'])
+  assert.match(stuck.warning, /still "processing"/)
+  assert.ok(calls.some((c) => c.message === 'break-task' && c.args[0] === '300'))
+})
+
+test('build_cancel confirms a task that stopped, and build output paths follow outputName', async () => {
+  let broken = false
+  const task = () => ({ id: '9', state: broken ? 'failure' : 'processing', options: { platform: 'web-mobile', buildPath: '/b', outputName: 'web-mobile-002' } })
+  const { ctx } = fake({ 'builder/query-tasks-info': () => ({ list: [task()] }), 'builder/break-task': () => { broken = true } })
+  assert.deepEqual(ok(await callTool('build_cancel', {}, ctx)), { ok: true, cancelled: '9', state: 'failure' })
+  const status = ok(await callTool('build_status', {}, ctx))
+  assert.equal(status.outDir.split('\\').join('/'), '/b/web-mobile-002')
 })
 
 test('editor_console_logs is compact by default and filters by type and pattern', async () => {
@@ -292,4 +304,55 @@ test('script_diagnostics reports a type error with file and line, and honours th
   assert.equal(ok(await callTool('script_diagnostics', { sinceMinutes: -1 }, ctx)).recentCreatorErrors.length, 0, 'older errors are left out')
   const empty = fake({}, { projectPath: () => mkdtempSync(join(tmpdir(), 'ccmcp-none-')) })
   assert.match(failed(await callTool('script_diagnostics', {}, empty.ctx)), /No tsconfig/)
+})
+
+test('component_dump turns nested @ccclass values into settable objects and empty slots into null', () => {
+  // Shape of the editor dump for `@property([FishSkinEntry]) skins` (each field is itself a dump entry).
+  const entry = (type, value, ext) => ({ name: 'x', type, value, ...(ext ? { extends: ext } : {}) })
+  const skins = dumpProperty('skins', {
+    type: 'FishSkinEntry',
+    isArray: true,
+    value: [
+      {
+        type: 'FishSkinEntry',
+        value: {
+          fishType: entry('Integer', 1),
+          skeletonData: entry('sp.SkeletonData', { uuid: 'sk1' }, ['cc.Asset']),
+          skinName: entry('String', '1'),
+          icon: entry('cc.SpriteFrame', { uuid: '' }, ['cc.Asset']),
+          frames: { name: 'frames', type: 'cc.SpriteFrame', isArray: true, extends: ['cc.Asset'], value: [{ type: 'cc.SpriteFrame', value: { uuid: 'f1' } }] },
+        },
+      },
+    ],
+  })
+  assert.deepEqual(skins.value, [{ fishType: 1, skeletonData: { $asset: 'sk1' }, skinName: '1', icon: null, frames: [{ $asset: 'f1' }] }])
+  assert.equal(dumpProperty('m', { type: 'cc.Material', extends: ['cc.Asset'], value: { uuid: '' } }).value, null)
+  assert.equal(dumpProperty('n', { type: 'cc.Node', value: { uuid: '' } }).value, null)
+})
+
+test('free-form value parameters declare every JSON type', () => {
+  for (const name of ['component_set_property', 'node_set_property', 'project_setting_set']) {
+    const tool = TOOLS.find((t) => t.name === name)
+    assert.deepEqual(tool.inputSchema.properties.value.type, ['string', 'number', 'boolean', 'object', 'array', 'null'], name)
+  }
+})
+
+test('log lines forwarded through console.error keep the level written in their text', async () => {
+  const { levelOf } = await import('../dist/tools/editor-tools.js')
+  assert.equal(levelOf('error', 'Warn: [Scene] No needs to indicate the cc.String attribute'), 'warn')
+  assert.equal(levelOf('error', '[Warning] something'), 'warn')
+  assert.equal(levelOf('error', 'Log: hello'), 'log')
+  assert.equal(levelOf('error', 'TypeError: Cannot read properties of undefined'), 'error')
+  assert.equal(levelOf('error', 'Warnings are not this'), 'error')
+  assert.equal(levelOf('log', 'Warn: stays log when the channel says log'), 'log')
+})
+
+test('project_build refuses an unsaved scene unless asked to save it first', async () => {
+  const { calls, ctx } = fake({ 'scene/query-dirty': true, 'builder/query-tasks-info': { list: [] } })
+  assert.match(failed(await callTool('project_build', {}, ctx)), /unsaved changes/)
+  assert.ok(!calls.some((c) => c.message === 'add-task'))
+  const out = ok(await callTool('project_build', { save: true }, ctx))
+  const order = calls.map((c) => c.message).filter((m) => m === 'save-scene' || m === 'add-task')
+  assert.deepEqual(order, ['save-scene', 'add-task'])
+  assert.equal(out.savedScene, true)
 })

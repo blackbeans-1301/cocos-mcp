@@ -23,6 +23,15 @@ export interface ToolDef {
   handler(args: Record<string, unknown>, ctx: ToolContext): Promise<unknown>
 }
 
+/**
+ * Schema of a free-form JSON value. The explicit type list matters: some clients treat a property with no `type`
+ * as a string and send `null` or `[1, 2]` as text.
+ */
+export const JSON_VALUE = {
+  type: ['string', 'number', 'boolean', 'object', 'array', 'null'],
+  description: 'JSON value.',
+} as const
+
 /** Bad tool input (missing field, wrong type) — mapped to JSON-RPC `-32602`. */
 export class ToolInputError extends Error {}
 

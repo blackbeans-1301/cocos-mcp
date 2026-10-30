@@ -59,6 +59,7 @@ exports.nodeTools = [
                 rotation: { ...VEC3, description: '[x, y, z] euler angles in degrees' },
                 scale: VEC3,
                 components: { type: 'array', items: { type: 'string' }, description: 'Component class names to add.' },
+                layer: { type: 'number', description: "Layer bitmask (default: the parent's layer, e.g. UI_2D under a Canvas)." },
             },
             additionalProperties: false,
         },
@@ -70,6 +71,7 @@ exports.nodeTools = [
             rotation: (0, types_js_1.optionalArray)(args, 'rotation'),
             scale: (0, types_js_1.optionalArray)(args, 'scale'),
             components: (0, types_js_1.optionalArray)(args, 'components'),
+            layer: (0, types_js_1.optionalNumber)(args, 'layer'),
         })),
     },
     {
@@ -156,7 +158,7 @@ exports.nodeTools = [
     },
     {
         name: 'node_create_tree',
-        description: 'Create a whole subtree in one call. `tree` is {name, position, rotation, scale, active, components: [classNames], children: [same shape]}. Created under a parent (default: scene root).',
+        description: 'Create a whole subtree in one call. `tree` is {name, position, rotation, scale, active, layer, components: [classNames], children: [same shape]}; layer defaults to the parent layer. Created under a parent (default: scene root).',
         inputSchema: {
             type: 'object',
             properties: {
@@ -174,7 +176,7 @@ exports.nodeTools = [
         description: 'Set any property on a node (e.g. layer, name) to a JSON value. Object references: {"$asset": uuid|db://url} (sub-assets like a SpriteFrame are "<imageUuid>@f9941"), {"$node": uuid|path}, {"$component": {"node": uuid|path, "type": "cc.Sprite"}} — also inside arrays.',
         inputSchema: {
             type: 'object',
-            properties: { ...REF_PROPS, property: { type: 'string' }, value: { description: 'JSON value.' } },
+            properties: { ...REF_PROPS, property: { type: 'string' }, value: types_js_1.JSON_VALUE },
             required: ['property', 'value'],
             additionalProperties: false,
         },

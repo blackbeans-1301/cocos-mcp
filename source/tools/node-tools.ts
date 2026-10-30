@@ -4,7 +4,7 @@
  * `Canvas/Player`).
  */
 import type { ToolDef, ToolContext } from './types.js'
-import { defined, optionalArray, optionalBoolean, optionalNumber, optionalString, requireString, ToolInputError } from './types.js'
+import { defined, JSON_VALUE, optionalArray, optionalBoolean, optionalNumber, optionalString, requireString, ToolInputError } from './types.js'
 
 const VEC3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: '[x, y, z]' }
 
@@ -70,6 +70,7 @@ export const nodeTools: ToolDef[] = [
         rotation: { ...VEC3, description: '[x, y, z] euler angles in degrees' },
         scale: VEC3,
         components: { type: 'array', items: { type: 'string' }, description: 'Component class names to add.' },
+        layer: { type: 'number', description: "Layer bitmask (default: the parent's layer, e.g. UI_2D under a Canvas)." },
       },
       additionalProperties: false,
     },
@@ -85,6 +86,7 @@ export const nodeTools: ToolDef[] = [
           rotation: optionalArray(args, 'rotation'),
           scale: optionalArray(args, 'scale'),
           components: optionalArray(args, 'components'),
+          layer: optionalNumber(args, 'layer'),
         }),
       ),
   },
@@ -183,7 +185,7 @@ export const nodeTools: ToolDef[] = [
   {
     name: 'node_create_tree',
     description:
-      'Create a whole subtree in one call. `tree` is {name, position, rotation, scale, active, components: [classNames], children: [same shape]}. Created under a parent (default: scene root).',
+      'Create a whole subtree in one call. `tree` is {name, position, rotation, scale, active, layer, components: [classNames], children: [same shape]}; layer defaults to the parent layer. Created under a parent (default: scene root).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -202,7 +204,7 @@ export const nodeTools: ToolDef[] = [
     description: 'Set any property on a node (e.g. layer, name) to a JSON value. Object references: {"$asset": uuid|db://url} (sub-assets like a SpriteFrame are "<imageUuid>@f9941"), {"$node": uuid|path}, {"$component": {"node": uuid|path, "type": "cc.Sprite"}} — also inside arrays.',
     inputSchema: {
       type: 'object',
-      properties: { ...REF_PROPS, property: { type: 'string' }, value: { description: 'JSON value.' } },
+      properties: { ...REF_PROPS, property: { type: 'string' }, value: JSON_VALUE },
       required: ['property', 'value'],
       additionalProperties: false,
     },

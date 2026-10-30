@@ -96,6 +96,10 @@ const loadAsset = async (ref) => {
     const uuid = ref.startsWith('db://') ? (await Editor.Message.request('asset-db', 'query-uuid', ref)) : ref;
     if (!uuid)
         fail(`No asset found for "${ref}".`);
+    // Ask the asset db first: a bad uuid otherwise surfaces as an opaque "download failed: import://…".
+    const info = await Editor.Message.request('asset-db', 'query-asset-info', uuid).catch(() => null);
+    if (!info)
+        fail(`No asset found for "${ref}" (sub-assets look like "<imageUuid>@f9941").`);
     return new Promise((resolve, reject) => {
         cc().assetManager.loadAny({ uuid }, (err, asset) => (err ? reject(err) : resolve(asset)));
     });
@@ -108,24 +112,134 @@ const refNode = (ref) => {
         return resolveNode({ path: ref });
     }
 };
+const isRef = (value) => !!value && typeof value === 'object' && !Array.isArray(value) && ('$asset' in value || '$node' in value || '$component' in value);
 /**
  * JSON can't carry engine objects, so a property value may name one:
  * `{"$asset": uuid|db://url}`, `{"$node": uuid|path}`, `{"$component": {"node": uuid|path, "type": "cc.Sprite"}}`.
- * Resolved recursively through arrays; anything else passes through.
+ * Resolved recursively through arrays and plain objects; `{"$asset": ""}` (an empty slot in a dump) is null.
  */
 const resolveRefs = async (value) => {
     if (Array.isArray(value))
         return Promise.all(value.map(resolveRefs));
     if (value && typeof value === 'object') {
         if (typeof value.$asset === 'string')
-            return loadAsset(value.$asset);
+            return value.$asset === '' ? null : loadAsset(value.$asset);
         if (typeof value.$node === 'string')
-            return refNode(value.$node);
+            return value.$node === '' ? null : refNode(value.$node);
         if (value.$component && typeof value.$component === 'object') {
             return findComponent(refNode(String(value.$component.node)), value.$component.type, value.$component.index);
         }
+        if (Object.getPrototypeOf(value) === Object.prototype) {
+            const out = {};
+            for (const [key, inner] of Object.entries(value))
+                out[key] = await resolveRefs(inner);
+            return out;
+        }
     }
     return value;
+};
+/** The engine's attribute record for `owner[key]` (`@property(Foo)` / `@property([Foo])` put the class in `ctor`). */
+const declaredAttr = (owner, key) => {
+    const klass = owner?.constructor;
+    if (!Array.isArray(klass?.__props__))
+        return undefined;
+    try {
+        return cc().CCClass.attr(klass, key);
+    }
+    catch {
+        return undefined;
+    }
+};
+/** A plain `@ccclass` data class (not an asset, node, component or value type) — built field by field. */
+const isDataClass = (Ctor) => {
+    const C = cc();
+    if (typeof Ctor !== 'function' || !Array.isArray(Ctor.__props__))
+        return false;
+    return ![C.Asset, C.Node, C.Component, C.ValueType].some((Base) => Base && (Ctor === Base || Ctor.prototype instanceof Base));
+};
+const isStringAttr = (attr) => attr?.type === 'String' || attr?.type?.name === 'String';
+/**
+ * Some MCP clients send an untyped `value` as its JSON text (`"null"`, `"[1,2]"`). For a property that is not a
+ * string, read such text as JSON so `null` clears a reference instead of storing the word "null".
+ */
+const looseJson = (value, attr, current) => {
+    if (typeof value !== 'string' || typeof current === 'string' || isStringAttr(attr))
+        return value;
+    try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === 'string' ? value : parsed;
+    }
+    catch {
+        return value;
+    }
+};
+/** A fresh instance of a data class holding `value`'s fields on top of `current`'s (so omitted fields are kept). */
+const buildData = async (Ctor, current, value, label) => {
+    const C = cc();
+    if (value === null || value === undefined || value instanceof Ctor)
+        return value ?? null;
+    if (typeof value !== 'object' || Array.isArray(value) || isRef(value)) {
+        fail(`${label} expects an object of class ${C.js.getClassName(Ctor)}, got ${JSON.stringify(value)}.`);
+    }
+    const target = new Ctor();
+    if (current instanceof Ctor)
+        for (const key of Ctor.__props__)
+            target[key] = current[key];
+    for (const [key, inner] of Object.entries(value)) {
+        assertProperty(target, key, `${label} (${C.js.getClassName(Ctor)})`);
+        target[key] = await toEngine(target, key, inner, `${label}.${key}`);
+    }
+    return target;
+};
+/**
+ * Build the engine value for `owner[key]` from JSON. `@ccclass` data objects — and arrays of them — are created with
+ * their declared class and filled field by field, so asset/node references inside them resolve too. `elementCtor`
+ * is the declared element class when `owner` is itself an array.
+ */
+const toEngine = async (owner, key, value, label, elementCtor) => {
+    const current = owner[key];
+    const attr = Array.isArray(owner) ? { ctor: elementCtor } : declaredAttr(owner, key);
+    const input = looseJson(value, attr, current);
+    const Ctor = isDataClass(attr?.ctor) ? attr.ctor : !Array.isArray(current) && isDataClass(current?.constructor) ? current.constructor : undefined;
+    if (!Ctor)
+        return coerce(current, await resolveRefs(input));
+    if (Array.isArray(current)) {
+        if (!Array.isArray(input))
+            fail(`${label} is an array of ${cc().js.getClassName(Ctor)}; pass an array (or set one element with "${label.split(' › ').pop()}.<index>").`);
+        return Promise.all(input.map((item, i) => buildData(Ctor, current[i], item, `${label}[${i}]`)));
+    }
+    return buildData(Ctor, current, input, label);
+};
+/**
+ * Walk a dotted property path (`skins.1.skinName`) to the object that holds its last segment. `elementCtor` is the
+ * declared element class when that holder is an array.
+ */
+const walkPath = (root, property, label) => {
+    const parts = property.split('.');
+    let owner = root;
+    let elementCtor;
+    const step = (part, at) => {
+        if (Array.isArray(owner)) {
+            const index = Number(part);
+            if (!Number.isInteger(index) || index < 0)
+                fail(`"${at}": "${part}" is not an array index.`);
+            return part;
+        }
+        assertProperty(owner, part, `${label}${at === part ? '' : ` › ${at}`}`);
+        return part;
+    };
+    for (let i = 0; i < parts.length - 1; i++) {
+        const at = parts.slice(0, i + 1).join('.');
+        const part = step(parts[i], at);
+        elementCtor = Array.isArray(owner) ? undefined : declaredAttr(owner, part)?.ctor;
+        owner = owner[part];
+        if (owner === null || typeof owner !== 'object')
+            fail(`"${at}" is ${owner === null ? 'null' : typeof owner}; cannot read "${parts[i + 1]}" from it.`);
+    }
+    const key = step(parts[parts.length - 1], property);
+    if (Array.isArray(owner) && Number(key) > owner.length)
+        fail(`"${property}": index ${key} is past the end (length ${owner.length}).`);
+    return { owner, key, ...(Array.isArray(owner) ? { elementCtor } : {}) };
 };
 /** Create a node (and, recursively, its `children`) from a plain spec. */
 const buildNode = (spec, parent) => {
@@ -140,6 +254,11 @@ const buildNode = (spec, parent) => {
         node.setScale(vec(spec.scale, C.Vec3));
     if (typeof spec.active === 'boolean')
         node.active = spec.active;
+    // Like the editor's own "Create Node": a child takes its parent's layer (UI_2D under a Canvas) unless told otherwise.
+    if (typeof spec.layer === 'number')
+        node.layer = spec.layer;
+    else if (parent !== scene())
+        node.layer = parent.layer;
     for (const type of spec.components ?? []) {
         if (!addComponentTo(node, type))
             fail(`Unknown component type "${type}".`);
@@ -159,15 +278,23 @@ const vec = (value, Ctor) => {
         return new Ctor(value.x ?? 0, value.y ?? 0, value.z ?? 0);
     fail(`Cannot build ${Ctor.name} from ${JSON.stringify(value)}.`);
 };
-/** Build the right engine value for `target[property]` from a plain JSON value. */
+/**
+ * Build the right engine value for `target[property]` from a plain JSON value. An object that names only some
+ * components (`{"x": 5}`) keeps the others from the current value.
+ */
 const coerce = (current, value) => {
     const C = cc();
-    if (current instanceof C.Vec3)
-        return vec(value, C.Vec3);
+    if (value === null || value === undefined)
+        return value;
+    if (current instanceof C.Vec3) {
+        if (value instanceof C.Vec3 || Array.isArray(value))
+            return vec(value, C.Vec3);
+        return new C.Vec3(value?.x ?? current.x, value?.y ?? current.y, value?.z ?? current.z);
+    }
     if (current instanceof C.Vec2) {
         if (Array.isArray(value))
             return new C.Vec2(value[0] ?? 0, value[1] ?? 0);
-        return new C.Vec2(value?.x ?? 0, value?.y ?? 0);
+        return new C.Vec2(value?.x ?? current.x, value?.y ?? current.y);
     }
     if (current instanceof C.Quat) {
         const src = Array.isArray(value) ? { x: value[0], y: value[1], z: value[2], w: value[3] } : value ?? {};
@@ -178,12 +305,12 @@ const coerce = (current, value) => {
             return new C.Color().fromHEX(value);
         if (Array.isArray(value))
             return new C.Color(value[0] ?? 0, value[1] ?? 0, value[2] ?? 0, value[3] ?? 255);
-        return new C.Color(value?.r ?? 0, value?.g ?? 0, value?.b ?? 0, value?.a ?? 255);
+        return new C.Color(value?.r ?? current.r, value?.g ?? current.g, value?.b ?? current.b, value?.a ?? current.a);
     }
     if (current instanceof C.Size) {
         if (Array.isArray(value))
             return new C.Size(value[0] ?? 0, value[1] ?? 0);
-        return new C.Size(value?.width ?? 0, value?.height ?? 0);
+        return new C.Size(value?.width ?? current.width, value?.height ?? current.height);
     }
     return value;
 };
@@ -237,7 +364,7 @@ function unload() { }
 exports.methods = {
     sceneInfo() {
         const s = scene();
-        return { name: s.name, uuid: uuidOf(s), childCount: s.children.length };
+        return { name: s.name, uuid: uuidOf(s), childCount: visibleChildren(s).length };
     },
     nodeTree(args = []) {
         const [options = {}] = args;
@@ -349,7 +476,7 @@ exports.methods = {
         if (typeof options.property !== 'string')
             fail('Provide "property".');
         assertProperty(node, options.property, `Node "${node.name}"`, 'Node properties are name, active, layer, mobility, … — see node_get; component properties are set with component_set_property.');
-        node[options.property] = coerce(node[options.property], await resolveRefs(options.value));
+        node[options.property] = coerce(node[options.property], await resolveRefs(looseJson(options.value, undefined, node[options.property])));
         return nodeDump(node);
     },
     listComponents(args = []) {
@@ -384,18 +511,20 @@ exports.methods = {
         const component = findComponent(node, options.type, options.index);
         if (typeof options.property !== 'string')
             fail('Provide "property".');
-        assertProperty(component, options.property, `Component "${options.type}"`);
-        return { type: options.type, property: options.property, value: plain(component[options.property]) };
+        const { owner, key } = walkPath(component, options.property, `Component "${options.type}"`);
+        return { type: options.type, property: options.property, value: plain(owner[key]) };
     },
+    /** `property` may be a dotted path into nested data (`skins.1.skinName`); arrays are indexed by number. */
     async setComponentProperty(args = []) {
         const [options = {}] = args;
         const node = resolveNode(options);
         const component = findComponent(node, options.type, options.index);
         if (typeof options.property !== 'string')
             fail('Provide "property".');
-        assertProperty(component, options.property, `Component "${options.type}"`);
-        component[options.property] = coerce(component[options.property], await resolveRefs(options.value));
-        return { type: options.type, property: options.property, value: plain(component[options.property]) };
+        const label = `Component "${options.type}"`;
+        const { owner, key, elementCtor } = walkPath(component, options.property, label);
+        owner[key] = await toEngine(owner, key, options.value, `${label} › ${options.property}`, elementCtor);
+        return { type: options.type, property: options.property, value: plain(owner[key]) };
     },
     async callComponentMethod(args = []) {
         const [options = {}] = args;
@@ -410,7 +539,9 @@ exports.methods = {
     listComponentTypes() {
         const C = cc();
         const names = new Set();
-        for (const value of Object.values(C)) {
+        // `cc.*` exports plus every registered class — project scripts (`@ccclass`) and modules like `sp.Skeleton`.
+        const registry = (C.js._nameToClass ?? {});
+        for (const value of [...Object.values(C), ...Object.values(registry)]) {
             if (typeof value === 'function' && value.prototype instanceof C.Component) {
                 const name = C.js.getClassName(value);
                 if (name)

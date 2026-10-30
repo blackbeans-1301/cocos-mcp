@@ -14,7 +14,7 @@ import { defined, optionalString, requireString, ToolInputError } from './types.
 
 const sceneCall = (ctx: ToolContext, method: string): Promise<unknown> => ctx.bridge.scene(method, [])
 
-const isDirty = async (ctx: ToolContext): Promise<boolean> => (await ctx.bridge.request('scene', 'query-dirty')) === true
+export const isDirty = async (ctx: ToolContext): Promise<boolean> => (await ctx.bridge.request('scene', 'query-dirty')) === true
 
 /**
  * Opening another scene while this one has unsaved edits makes Creator pop up a "save changes?" dialog,

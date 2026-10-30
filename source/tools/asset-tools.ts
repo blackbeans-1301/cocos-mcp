@@ -5,7 +5,7 @@
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import type { ToolDef, ToolContext } from './types.js'
-import { defined, optionalBoolean, optionalNumber, optionalObject, optionalString, requireString, ToolInputError } from './types.js'
+import { defined, JSON_VALUE, optionalBoolean, optionalNumber, optionalObject, optionalString, requireString, ToolInputError } from './types.js'
 
 /** Accept a uuid or a db:// url (asset-db accepts either in most messages). */
 const target = (args: Record<string, unknown>): string => {
@@ -159,7 +159,7 @@ export const assetTools: ToolDef[] = [
       type: 'object',
       properties: {
         url: { type: 'string', description: 'e.g. db://assets/data/level.json' },
-        content: { description: 'Raw content (string, or JSON value).' },
+        content: { ...JSON_VALUE, description: 'Raw content (string, or JSON value).' },
       },
       required: ['url'],
       additionalProperties: false,
@@ -172,7 +172,7 @@ export const assetTools: ToolDef[] = [
     description: 'Overwrite an asset with new raw content.',
     inputSchema: {
       type: 'object',
-      properties: { uuid: { type: 'string' }, url: { type: 'string' }, content: {} },
+      properties: { uuid: { type: 'string' }, url: { type: 'string' }, content: JSON_VALUE },
       required: ['content'],
       additionalProperties: false,
     },

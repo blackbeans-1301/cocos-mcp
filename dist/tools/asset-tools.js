@@ -162,7 +162,7 @@ exports.assetTools = [
             type: 'object',
             properties: {
                 url: { type: 'string', description: 'e.g. db://assets/data/level.json' },
-                content: { description: 'Raw content (string, or JSON value).' },
+                content: { ...types_js_1.JSON_VALUE, description: 'Raw content (string, or JSON value).' },
             },
             required: ['url'],
             additionalProperties: false,
@@ -174,7 +174,7 @@ exports.assetTools = [
         description: 'Overwrite an asset with new raw content.',
         inputSchema: {
             type: 'object',
-            properties: { uuid: { type: 'string' }, url: { type: 'string' }, content: {} },
+            properties: { uuid: { type: 'string' }, url: { type: 'string' }, content: types_js_1.JSON_VALUE },
             required: ['content'],
             additionalProperties: false,
         },

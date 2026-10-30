@@ -24,9 +24,10 @@ const prefabNodeTool = (name, description, message) => ({
                 throw new types_js_1.ToolInputError('Provide "uuid" or "path".');
             uuid = (await ctx.bridge.scene('getNode', [{ path }])).uuid;
         }
+        // Fails with "is not part of a prefab instance" — Creator's own messages silently do nothing on a plain node.
+        const info = (await ctx.bridge.scene('getPrefabInfo', [{ uuid }]));
         if (message === 'restore-prefab') {
             // Reverting needs the instance root and the prefab asset: (rootUuid, assetUuid).
-            const info = (await ctx.bridge.scene('getPrefabInfo', [{ uuid }]));
             await ctx.bridge.request('scene', message, info.rootUuid, info.assetUuid);
             return { ok: true, uuid: info.rootUuid, prefab: info.assetUuid };
         }

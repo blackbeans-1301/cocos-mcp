@@ -123,3 +123,17 @@ test('a tool that returns nothing still yields a serialisable result', async () 
   const out = await callTool('editor_undo', {}, ctx)
   assert.ok(JSON.stringify(out) !== undefined)
 })
+
+test('prefab_apply and prefab_unlink refuse a node that is not a prefab instance', async () => {
+  const { calls, ctx } = fake()
+  ctx.bridge.scene = async (method, args) => {
+    calls.push({ pkg: 'scene-script', message: method, args })
+    if (method === 'getPrefabInfo') throw new Error('Node "Plain" is not part of a prefab instance.')
+    return { uuid: 'node-1' }
+  }
+  for (const name of ['prefab_apply', 'prefab_unlink']) {
+    const out = await callTool(name, { uuid: 'node-1' }, ctx)
+    assert.match(out.toolError ?? '', /not part of a prefab instance/, name)
+  }
+  assert.ok(!calls.some((c) => c.message === 'apply-prefab' || c.message === 'unlink-prefab'))
+})

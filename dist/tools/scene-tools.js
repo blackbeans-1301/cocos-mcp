@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sceneTools = exports.sceneList = void 0;
+exports.sceneTools = exports.sceneList = exports.isDirty = void 0;
 /**
  * Scene-level tools: what is open, list/open/save scene assets.
  *
@@ -15,12 +15,13 @@ const asset_tools_js_1 = require("./asset-tools.js");
 const types_js_1 = require("./types.js");
 const sceneCall = (ctx, method) => ctx.bridge.scene(method, []);
 const isDirty = async (ctx) => (await ctx.bridge.request('scene', 'query-dirty')) === true;
+exports.isDirty = isDirty;
 /**
  * Opening another scene while this one has unsaved edits makes Creator pop up a "save changes?" dialog,
  * which blocks every editor message until a person answers it. So refuse unless the caller says to save.
  */
 const guardDirty = async (ctx, save) => {
-    if (!(await isDirty(ctx)))
+    if (!(await (0, exports.isDirty)(ctx)))
         return false;
     if (!save) {
         throw new Error('The open scene has unsaved changes. Opening another scene would make Creator show a save dialog that blocks the editor. Pass "save": true to save it first.');
@@ -75,7 +76,7 @@ exports.sceneTools = [
         name: 'scene_is_dirty',
         description: 'Whether the open scene has edits that are not saved to disk yet (tools that change the scene do not save it; use scene_save).',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-        handler: async (_args, ctx) => ({ dirty: await isDirty(ctx), scene: await sceneCall(ctx, 'sceneInfo') }),
+        handler: async (_args, ctx) => ({ dirty: await (0, exports.isDirty)(ctx), scene: await sceneCall(ctx, 'sceneInfo') }),
     },
     {
         name: 'scene_screenshot',

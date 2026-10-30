@@ -7,7 +7,7 @@
  * covers yet. Prefer the typed tools: they validate input and return structure.
  */
 import type { ToolDef, ToolContext } from './types.js'
-import { ToolInputError, defined, optionalArray, optionalBoolean, optionalEnum, optionalNumber, optionalString, requireString } from './types.js'
+import { ToolInputError, JSON_VALUE, defined, optionalArray, optionalBoolean, optionalEnum, optionalNumber, optionalString, requireString } from './types.js'
 
 /**
  * Ring buffer of main-process output — Creator 3.8.8 has no `query-console-logs` message.
@@ -79,11 +79,24 @@ export interface LogQuery {
   withinMs?: number | undefined
 }
 
+/**
+ * The level a line really has. Lines forwarded from the scene process keep it in their text ("Warn: [Scene] …") but
+ * reach this process through console.error/stderr, so the channel alone over-reports errors. Decided when reading,
+ * not when recording: the console hook is installed once per editor session and survives extension reloads.
+ */
+export const levelOf = (type: string, message: string): string => {
+  if (type !== 'error') return type
+  if (/^\s*\[?warn(ing)?\b/i.test(message)) return 'warn'
+  if (/^\s*\[?(log|info)\b[:\]]/i.test(message)) return 'log'
+  return type
+}
+
 /** Filter the captured log buffer. Default output is compact: no stack frames, long messages cut. */
 export const searchLogs = (query: LogQuery): Array<Record<string, unknown>> => {
   const matcher = query.pattern ? new RegExp(query.pattern, 'i') : null
   const oldest = query.withinMs === undefined ? 0 : Date.now() - query.withinMs
   return logBuffer
+    .map((line) => ({ ...line, type: levelOf(line.type, line.message) }))
     .filter((line) => (!query.type || line.type === query.type) && (!matcher || matcher.test(line.message)) && Date.parse(line.time) >= oldest)
     .slice(-(query.limit ?? 100))
     .map((line) => ({ ...line, message: compact(line.message, query.stack === true, query.maxChars ?? 800) }))
@@ -259,7 +272,7 @@ export const editorTools: ToolDef[] = [
     description: 'Write a project setting (experimental; verify with project_setting_get).',
     inputSchema: {
       type: 'object',
-      properties: { package: { type: 'string' }, key: { type: 'string' }, value: { description: 'JSON value.' } },
+      properties: { package: { type: 'string' }, key: { type: 'string' }, value: JSON_VALUE },
       required: ['package', 'key', 'value'],
       additionalProperties: false,
     },

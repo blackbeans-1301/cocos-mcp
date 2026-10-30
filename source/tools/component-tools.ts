@@ -4,7 +4,7 @@
  * components of the same class on one node.
  */
 import type { ToolDef, ToolContext } from './types.js'
-import { defined, optionalArray, optionalNumber, optionalString, requireString, ToolInputError } from './types.js'
+import { defined, JSON_VALUE, optionalArray, optionalNumber, optionalString, requireString, ToolInputError } from './types.js'
 
 const ref = (args: Record<string, unknown>): Record<string, unknown> =>
   defined({
@@ -24,17 +24,28 @@ const TARGET = {
   index: { type: 'number', description: 'Index among components of the same type (default 0).' },
 } as const
 
+const PROPERTY = { type: 'string', description: 'Property name, or a dotted path into nested data, e.g. "skins.1.skinName".' } as const
+
 type Json = Record<string, unknown>
 const isJson = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** An editor dump entry (`{name, value, type, ...}`) — what each field of a nested `@ccclass` value is made of. */
+const isDumpEntry = (value: unknown): value is Json => isJson(value) && 'value' in value && 'type' in value
 
 /** One value from the editor's component dump, in the same JSON shape component_set_property accepts. */
 const dumpValue = (entry: Json): unknown => {
   const value = entry['value']
   const extendsList = Array.isArray(entry['extends']) ? (entry['extends'] as string[]) : []
   if (isJson(value) && typeof value['uuid'] === 'string') {
+    // An empty reference slot: null is what component_set_property takes to clear it.
+    if (value['uuid'] === '' && (entry['type'] === 'cc.Node' || extendsList.includes('cc.Asset') || extendsList.includes('cc.Component'))) return null
     if (entry['type'] === 'cc.Node') return { $node: value['uuid'] }
     if (extendsList.includes('cc.Asset')) return { $asset: value['uuid'] }
     if (extendsList.includes('cc.Component')) return { $component: { node: value['uuid'], type: entry['type'] } }
+  }
+  // A nested `@ccclass` object: every field is itself a dump entry.
+  if (isJson(value) && Object.keys(value).length > 0 && Object.values(value).every(isDumpEntry)) {
+    return Object.fromEntries(Object.entries(value).map(([name, inner]) => [name, dumpProperty(name, inner as Json)['value']]))
   }
   return value ?? null
 }
@@ -121,10 +132,10 @@ export const componentTools: ToolDef[] = [
   },
   {
     name: 'component_get_property',
-    description: 'Read one property of a component.',
+    description: 'Read one property of a component. `property` may be a dotted path into nested data, e.g. "skins.1.skinName".',
     inputSchema: {
       type: 'object',
-      properties: { ...TARGET, property: { type: 'string' } },
+      properties: { ...TARGET, property: PROPERTY },
       required: ['type', 'property'],
       additionalProperties: false,
     },
@@ -158,10 +169,10 @@ export const componentTools: ToolDef[] = [
   {
     name: 'component_set_property',
     description:
-      'Set one property of a component. Engine value types are built from JSON: Vec3/Vec2/Quat from [x,y,z]/… or {x,y,z}; Color from "#rrggbb" or [r,g,b,a]; Size from [w,h]. Object references: {\"$asset\": uuid|db://url} (sub-assets like a SpriteFrame are \"<imageUuid>@f9941\"), {\"$node\": uuid|path}, {\"$component\": {\"node\": uuid|path, \"type\": \"cc.Sprite\"}} — also inside arrays.',
+      'Set one property of a component. Engine value types are built from JSON: Vec3/Vec2/Quat from [x,y,z]/… or {x,y,z}; Color from "#rrggbb" or [r,g,b,a]; Size from [w,h]. Object references: {\"$asset\": uuid|db://url} (sub-assets like a SpriteFrame are \"<imageUuid>@f9941\"), {\"$node\": uuid|path}, {\"$component\": {\"node\": uuid|path, \"type\": \"cc.Sprite\"}} — also inside arrays and nested objects; null clears a reference. Custom @ccclass values (and arrays of them) are built with their declared class; fields left out keep their current values. `property` may be a dotted path, e.g. "skins.1.skinName" or "skins.1" (one array element).',
     inputSchema: {
       type: 'object',
-      properties: { ...TARGET, property: { type: 'string' }, value: { description: 'JSON value.' } },
+      properties: { ...TARGET, property: PROPERTY, value: JSON_VALUE },
       required: ['type', 'property', 'value'],
       additionalProperties: false,
     },
