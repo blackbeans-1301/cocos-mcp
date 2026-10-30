@@ -70,7 +70,7 @@ exports.template = `
     </div>
     <ul class="mcp-agents" id="agents"></ul>
     <p class="mcp-note" id="agents-note">
-      Registers the endpoint in each agent's MCP config. Existing servers are left untouched.
+      Registers the endpoint in each agent's MCP config and installs the ccreator-mcp skills. Existing servers are left untouched.
     </p>
   </section>
 
@@ -222,7 +222,15 @@ const loadAgents = async () => {
         /* the panel still works without the agent list */
     }
 };
-const agentLabel = (agent) => agent.error ? agent.error : agent.configured ? 'configured' : agent.installed ? 'detected' : 'not found';
+const agentLabel = (agent) => agent.error
+    ? agent.error
+    : agent.configured
+        ? agent.skills
+            ? 'configured + skills'
+            : 'configured'
+        : agent.installed
+            ? 'detected'
+            : 'not found';
 const renderAgents = (agents) => {
     const list = $('agents');
     if (!list)

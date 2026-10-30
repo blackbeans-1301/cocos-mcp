@@ -27,6 +27,8 @@ interface AgentState {
   scope: 'home' | 'project'
   installed: boolean
   configured: boolean
+  skills: boolean
+  skillsSupported: boolean
   docs: string
   error: string
 }
@@ -88,7 +90,7 @@ export const template = `
     </div>
     <ul class="mcp-agents" id="agents"></ul>
     <p class="mcp-note" id="agents-note">
-      Registers the endpoint in each agent's MCP config. Existing servers are left untouched.
+      Registers the endpoint in each agent's MCP config and installs the ccreator-mcp skills. Existing servers are left untouched.
     </p>
   </section>
 
@@ -254,7 +256,15 @@ const loadAgents = async (): Promise<void> => {
 }
 
 const agentLabel = (agent: AgentState): string =>
-  agent.error ? agent.error : agent.configured ? 'configured' : agent.installed ? 'detected' : 'not found'
+  agent.error
+    ? agent.error
+    : agent.configured
+      ? agent.skills
+        ? 'configured + skills'
+        : 'configured'
+      : agent.installed
+        ? 'detected'
+        : 'not found'
 
 const renderAgents = (agents: AgentState[]): void => {
   const list = $('agents')

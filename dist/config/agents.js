@@ -23,6 +23,7 @@ exports.AGENTS = [
         scope: 'home',
         file: '.cursor/mcp.json',
         detect: [{ scope: 'home', path: '.cursor' }],
+        skills: { scope: 'home', dir: '.cursor/skills' },
         docs: 'https://docs.cursor.com/context/model-context-protocol',
     },
     {
@@ -35,6 +36,7 @@ exports.AGENTS = [
             { scope: 'home', path: '.claude.json' },
             { scope: 'home', path: '.claude' },
         ],
+        skills: { scope: 'home', dir: '.claude/skills' },
         docs: 'https://docs.claude.com/en/docs/claude-code/mcp',
     },
     {
@@ -44,6 +46,7 @@ exports.AGENTS = [
         scope: 'home',
         file: '.codeium/windsurf/mcp_config.json',
         detect: [{ scope: 'home', path: '.codeium/windsurf' }],
+        skills: { scope: 'home', dir: '.codeium/windsurf/skills' },
         docs: 'https://docs.windsurf.com/windsurf/cascade/mcp',
     },
     {
@@ -53,6 +56,7 @@ exports.AGENTS = [
         scope: 'home',
         file: '.config/opencode/opencode.json',
         detect: [{ scope: 'home', path: '.config/opencode' }],
+        skills: { scope: 'home', dir: '.config/opencode/skills' },
         docs: 'https://opencode.ai/docs/mcp-servers/',
     },
     {
@@ -62,6 +66,7 @@ exports.AGENTS = [
         scope: 'project',
         file: '.vscode/mcp.json',
         detect: [{ scope: 'project', path: '.vscode' }],
+        skills: { scope: 'project', dir: '.github/skills' },
         docs: 'https://code.visualstudio.com/docs/copilot/chat/mcp-servers',
     },
     {
@@ -71,6 +76,7 @@ exports.AGENTS = [
         scope: 'home',
         file: '.codex/config.toml',
         detect: [{ scope: 'home', path: '.codex' }],
+        skills: { scope: 'home', dir: '.agents/skills' },
         docs: 'https://github.com/openai/codex',
     },
 ];

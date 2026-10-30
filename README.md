@@ -153,6 +153,39 @@ Nodes and components are addressed by `uuid` (preferred) or `path`
 `{"$component": {"node": uuid|path, "type": "cc.Sprite"}}` — e.g. a SpriteFrame is
 `{"$asset": "<imageUuid>@f9941"}`.
 
+## Agent skills
+
+The tools tell an agent *what* it can call; the skills in [`skills/`](./skills) teach it *how* to use
+them well (preflight, addressing, value formats, the inspect → edit → verify → save loop, UI layers, prefab
+pitfalls, script and build workflows). They use the standard `SKILL.md` format.
+
+| Skill | Covers |
+|---|---|
+| `ccreator-mcp` | start here: preflight, addressing, value formats, saving, undo, safety |
+| `cocos-scene-editing` | nodes and components, object references, verification |
+| `cocos-ui-building` | Canvas, layers, Label/Sprite/Button/Widget, "not visible" checklist |
+| `cocos-assets-prefabs` | asset db, import settings, prefab lifecycle |
+| `cocos-scripting` | write, type-check and attach TypeScript components |
+| `cocos-build-debug` | builds, logs, screenshots, settings |
+
+The panel's *Configure* button (and `node dist/cli.js`) installs the skills together with the MCP
+entry; *Remove* deletes only those folders and leaves your own skills alone:
+
+| Agent | Skills folder |
+|---|---|
+| Claude Code | `~/.claude/skills/` |
+| Cursor | `~/.cursor/skills/` |
+| Windsurf | `~/.codeium/windsurf/skills/` |
+| OpenCode | `~/.config/opencode/skills/` |
+| Codex CLI | `~/.agents/skills/` |
+| VS Code (Copilot) | `.github/skills/` in the open project |
+
+Some agents also read each other's folders (Cursor and OpenCode read `~/.claude/skills` and
+`~/.agents/skills`), so configuring several agents can list the same skill twice. The copies are
+identical and harmless; *Remove* on each agent clears its own.
+
+`npm test` checks that every tool a skill mentions really exists.
+
 ## How it works
 
 - **`source/scene.ts`** is the extension's *scene script*: it runs in the engine
