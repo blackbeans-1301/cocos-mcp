@@ -8,11 +8,11 @@
  * Safety rules, to keep this from wrecking a user's config:
  * - **Merge, never replace.** Other servers in the file are preserved.
  * - **Refuse invalid JSON** rather than "fixing" it.
- * - Only ever touch our own `adscraft` entry.
+ * - Only ever touch our own `ccreator-mcp` entry.
  */
 
-export const SERVER_NAME = 'adscraft'
-export const SERVER_TITLE = 'AdsCraft MCP'
+export const SERVER_NAME = 'ccreator-mcp'
+export const SERVER_TITLE = 'ccreator-mcp'
 
 export type ConfigKind = 'mcpServers' | 'vscode' | 'opencode' | 'toml'
 
@@ -25,6 +25,8 @@ export interface AgentSpec {
   scope: 'home' | 'project'
   /** Paths whose existence means the agent is installed (same scopes). */
   detect: Array<{ scope: 'home' | 'project'; path: string }>
+  /** Where the agent reads `SKILL.md` skills (each skill is a subfolder). Taken from the agent's own docs. */
+  skills?: { scope: 'home' | 'project'; dir: string }
   docs: string
 }
 
@@ -36,6 +38,7 @@ export const AGENTS: AgentSpec[] = [
     scope: 'home',
     file: '.cursor/mcp.json',
     detect: [{ scope: 'home', path: '.cursor' }],
+    skills: { scope: 'home', dir: '.cursor/skills' },
     docs: 'https://docs.cursor.com/context/model-context-protocol',
   },
   {
@@ -48,6 +51,7 @@ export const AGENTS: AgentSpec[] = [
       { scope: 'home', path: '.claude.json' },
       { scope: 'home', path: '.claude' },
     ],
+    skills: { scope: 'home', dir: '.claude/skills' },
     docs: 'https://docs.claude.com/en/docs/claude-code/mcp',
   },
   {
@@ -57,6 +61,7 @@ export const AGENTS: AgentSpec[] = [
     scope: 'home',
     file: '.codeium/windsurf/mcp_config.json',
     detect: [{ scope: 'home', path: '.codeium/windsurf' }],
+    skills: { scope: 'home', dir: '.codeium/windsurf/skills' },
     docs: 'https://docs.windsurf.com/windsurf/cascade/mcp',
   },
   {
@@ -66,6 +71,7 @@ export const AGENTS: AgentSpec[] = [
     scope: 'home',
     file: '.config/opencode/opencode.json',
     detect: [{ scope: 'home', path: '.config/opencode' }],
+    skills: { scope: 'home', dir: '.config/opencode/skills' },
     docs: 'https://opencode.ai/docs/mcp-servers/',
   },
   {
@@ -75,6 +81,7 @@ export const AGENTS: AgentSpec[] = [
     scope: 'project',
     file: '.vscode/mcp.json',
     detect: [{ scope: 'project', path: '.vscode' }],
+    skills: { scope: 'project', dir: '.github/skills' },
     docs: 'https://code.visualstudio.com/docs/copilot/chat/mcp-servers',
   },
   {
@@ -84,6 +91,7 @@ export const AGENTS: AgentSpec[] = [
     scope: 'home',
     file: '.codex/config.toml',
     detect: [{ scope: 'home', path: '.codex' }],
+    skills: { scope: 'home', dir: '.agents/skills' },
     docs: 'https://github.com/openai/codex',
   },
 ]

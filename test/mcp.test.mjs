@@ -50,12 +50,12 @@ test('initialize negotiates the protocol version and issues a session id', async
   const result = await handleMessage(
     request(1, 'initialize', { protocolVersion: '2025-03-26', clientInfo: { name: 'test' } }),
     { bridge },
-    { name: 'ads-craft-mcp', version: '0.1.0' },
+    { name: 'ccreator-mcp', version: '0.1.0' },
     session,
   )
   assert.equal(result.newSessionId, 'session-1')
   assert.equal(result.body.result.protocolVersion, '2025-03-26')
-  assert.deepEqual(result.body.result.serverInfo, { name: 'ads-craft-mcp', version: '0.1.0' })
+  assert.deepEqual(result.body.result.serverInfo, { name: 'ccreator-mcp', version: '0.1.0' })
 })
 
 test('initialize falls back to the latest version when the client asks for an unknown one', async () => {
@@ -128,7 +128,7 @@ test('unknown method is method-not-found; notifications get no body', async () =
 
 test('HTTP transport: session header, tools/call, notification 202, origin guard', async () => {
   const { bridge, calls } = createFakeBridge()
-  const handle = await startMcpHttp({ bridge }, { port: 0, serverInfo: { name: 'ads-craft-mcp', version: '0.1.0' } })
+  const handle = await startMcpHttp({ bridge }, { port: 0, serverInfo: { name: 'ccreator-mcp', version: '0.1.0' } })
   try {
     assert.match(handle.url, /^http:\/\/127\.0\.0\.1:\d+\/mcp$/)
 

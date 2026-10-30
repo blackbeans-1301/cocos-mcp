@@ -1,6 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.defined = exports.optionalEnum = exports.optionalObject = exports.optionalArray = exports.optionalBoolean = exports.optionalNumber = exports.optionalString = exports.requireString = exports.asObject = exports.ToolInputError = void 0;
+exports.defined = exports.optionalEnum = exports.optionalObject = exports.optionalArray = exports.optionalBoolean = exports.optionalNumber = exports.optionalString = exports.requireString = exports.asObject = exports.ToolInputError = exports.JSON_VALUE = void 0;
+/**
+ * Schema of a free-form JSON value. The explicit type list matters: some clients treat a property with no `type`
+ * as a string and send `null` or `[1, 2]` as text.
+ */
+exports.JSON_VALUE = {
+    type: ['string', 'number', 'boolean', 'object', 'array', 'null'],
+    description: 'JSON value.',
+};
 /** Bad tool input (missing field, wrong type) — mapped to JSON-RPC `-32602`. */
 class ToolInputError extends Error {
 }

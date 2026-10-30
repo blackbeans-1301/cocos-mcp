@@ -24,6 +24,13 @@ const prefabNodeTool = (name, description, message) => ({
                 throw new types_js_1.ToolInputError('Provide "uuid" or "path".');
             uuid = (await ctx.bridge.scene('getNode', [{ path }])).uuid;
         }
+        // Fails with "is not part of a prefab instance" — Creator's own messages silently do nothing on a plain node.
+        const info = (await ctx.bridge.scene('getPrefabInfo', [{ uuid }]));
+        if (message === 'restore-prefab') {
+            // Reverting needs the instance root and the prefab asset: (rootUuid, assetUuid).
+            await ctx.bridge.request('scene', message, info.rootUuid, info.assetUuid);
+            return { ok: true, uuid: info.rootUuid, prefab: info.assetUuid };
+        }
         await ctx.bridge.request('scene', message, uuid);
         return { ok: true, uuid };
     },
@@ -51,7 +58,7 @@ exports.prefabTools = [
             const url = (0, types_js_1.optionalString)(args, 'url');
             if (!uuid && !url)
                 return (0, asset_tools_js_1.queryAssets)(ctx, 'db://assets/**/*.prefab', 'cc.Prefab');
-            return ctx.bridge.request('asset-db', 'query-asset-info', uuid ?? url);
+            return (0, asset_tools_js_1.requireAssetInfo)(ctx, (uuid ?? url));
         },
     },
     {
@@ -79,7 +86,7 @@ exports.prefabTools = [
     },
     {
         name: 'prefab_create_from_node',
-        description: 'Create a prefab asset from a node in the open scene.',
+        description: 'Create a prefab asset from a node in the open scene. The source node becomes an instance: it is renamed after the prefab and its uuid changes.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -99,8 +106,14 @@ exports.prefabTools = [
                 nodeUuid = (await ctx.bridge.scene('getNode', [{ path: nodePath }])).uuid;
             }
             // Creator's message takes (nodeUuid, url) positionally; it returns nothing useful.
-            await ctx.bridge.request('scene', 'create-prefab', nodeUuid, (0, types_js_1.requireString)(args, 'url'));
-            return { created: (0, types_js_1.requireString)(args, 'url'), nodeUuid };
+            const url = (0, types_js_1.requireString)(args, 'url');
+            await ctx.bridge.request('scene', 'create-prefab', nodeUuid, url);
+            const asset = (await ctx.bridge.request('asset-db', 'query-asset-info', url));
+            return {
+                created: url,
+                prefabUuid: asset?.uuid,
+                note: 'The source node is renamed after the prefab and gets a new uuid; find it again with node_find (by name) before editing it.',
+            };
         },
     },
     prefabNodeTool('prefab_apply', "Apply a prefab instance's changes back to its prefab asset.", 'apply-prefab'),

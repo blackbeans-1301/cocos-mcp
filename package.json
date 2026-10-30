@@ -1,10 +1,26 @@
 {
-  "name": "ads-craft-mcp",
+  "name": "ccreator-mcp",
   "version": "0.1.0",
+  "title": "i18n:ccreator-mcp.title",
   "package_version": 2,
-  "description": "AdsCraft MCP — let AI assistants drive Cocos Creator 3.8.8 (scenes, nodes, components, prefabs, assets) over the Model Context Protocol.",
+  "description": "i18n:ccreator-mcp.description",
   "author": "AdsCraft team",
   "license": "MIT",
+  "homepage": "https://github.com/blackbeans-1301/cocos-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/blackbeans-1301/cocos-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blackbeans-1301/cocos-mcp/issues"
+  },
+  "keywords": [
+    "cocos-creator",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "extension"
+  ],
   "private": true,
   "type": "commonjs",
   "main": "./dist/main.js",
@@ -13,11 +29,15 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test test/*.mjs",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "icon": "node scripts/make-icon.mjs",
+    "pack": "npm run build && node scripts/pack.mjs",
+    "screenshots": "node scripts/make-screenshots.mjs",
+    "promo": "node scripts/make-promo.mjs"
   },
   "panels": {
     "main": {
-      "title": "AdsCraft MCP",
+      "title": "i18n:ccreator-mcp.title",
       "main": "./dist/panel/index.js",
       "type": "simple",
       "size": {
@@ -32,7 +52,7 @@
     "menu": [
       {
         "path": "Extension",
-        "label": "AdsCraft MCP",
+        "label": "i18n:ccreator-mcp.menu",
         "message": "open-panel"
       }
     ],
@@ -44,13 +64,41 @@
       }
     ],
     "messages": {
-      "open-panel": { "methods": ["open-panel"] },
-      "mcp-status": { "methods": ["mcp-status"] },
-      "mcp-set-enabled": { "methods": ["mcp-set-enabled"] },
-      "mcp-set-port": { "methods": ["mcp-set-port"] },
-      "mcp-agents": { "methods": ["mcp-agents"] },
-      "mcp-configure-agent": { "methods": ["mcp-configure-agent"] },
-      "mcp-restart": { "methods": ["mcp-restart"] }
+      "open-panel": {
+        "methods": [
+          "open-panel"
+        ]
+      },
+      "mcp-status": {
+        "methods": [
+          "mcp-status"
+        ]
+      },
+      "mcp-set-enabled": {
+        "methods": [
+          "mcp-set-enabled"
+        ]
+      },
+      "mcp-set-port": {
+        "methods": [
+          "mcp-set-port"
+        ]
+      },
+      "mcp-agents": {
+        "methods": [
+          "mcp-agents"
+        ]
+      },
+      "mcp-configure-agent": {
+        "methods": [
+          "mcp-configure-agent"
+        ]
+      },
+      "mcp-restart": {
+        "methods": [
+          "mcp-restart"
+        ]
+      }
     },
     "scene": {
       "script": "./dist/scene.js"

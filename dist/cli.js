@@ -21,7 +21,7 @@ const valueOf = (flag) => {
     return index >= 0 ? args[index + 1] : undefined;
 };
 const allValues = (flag) => args.reduce((out, arg, index) => (arg === flag && args[index + 1] ? [...out, args[index + 1]] : out), []);
-const port = valueOf('--port') ?? process.env['ADSCRAFT_MCP_PORT'] ?? String(session_js_1.DEFAULT_MCP_PORT);
+const port = valueOf('--port') ?? process.env['CCREATOR_MCP_PORT'] ?? String(session_js_1.DEFAULT_MCP_PORT);
 const url = valueOf('--url') ?? `http://127.0.0.1:${port}/mcp`;
 const wanted = allValues('--agent');
 const mode = has('--remove') ? 'remove' : 'add';
