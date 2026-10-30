@@ -1,0 +1,59 @@
+# Builds the importable extension zip (build/ccreator-mcp-<version>.zip).
+# - push / PR: build, test, pack, and attach the zip as a workflow artifact.
+# - tag v*: same, then publish a GitHub Release with the zip attached.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+
+      - run: node scripts/pack.mjs
+
+      - name: Locate zip
+        id: zip
+        run: echo "path=$(ls build/*.zip)" >> "$GITHUB_OUTPUT"
+
+      # upload the staged folder, not the zip: Actions zips artifacts itself, so this
+      # download is already an importable zip (package.json at the root)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ccreator-mcp-${{ github.sha }}
+          path: build/ccreator-mcp/
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.zip.outputs.path }}" \
+            --title "$GITHUB_REF_NAME" --generate-notes

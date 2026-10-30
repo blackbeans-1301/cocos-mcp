@@ -31,7 +31,11 @@ AI client  ──HTTP (127.0.0.1)──►  ccreator-mcp (in the editor)  ──
 
 ## Install
 
-Clone or download this repository, then import it into Creator:
+Download `ccreator-mcp-<version>.zip` from the
+[latest release](https://github.com/blackbeans-1301/cocos-mcp/releases/latest), then in Creator open
+**Extension → Extension Manager → Import** and pick the zip. Restart the editor.
+
+Or clone this repository and import the folder instead:
 **Extension → Extension Manager → Import**, and select the repository folder (the
 one containing `package.json`). Restart the editor. The MCP server starts
 automatically unless you turn it off in the panel (**Extension → ccreator-mcp**,
